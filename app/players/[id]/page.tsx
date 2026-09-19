@@ -1,6 +1,12 @@
-import Link from 'next/link'
 import { notFound } from 'next/navigation'
-import { Card, Empty, PageTitle, Pill, Stat } from '@/components/ui'
+import {
+  BackLink,
+  Empty,
+  PageTitle,
+  Panel,
+  Pill,
+  SectionTitle,
+} from '@/components/ui'
 import { STATS, STAT_KEYS, emptyStats, pickStats } from '@/lib/stats-config'
 import { formatAverage } from '@/lib/format'
 import { sumStat } from '@/lib/aggregate'
@@ -51,56 +57,99 @@ export default async function PlayerDetailPage(props: {
     .filter((s) => bySeason.has(s.id))
     .map((s) => ({ season: s, ...bySeason.get(s.id)! }))
 
+  const combined = sumStat(career, STAT_KEYS)
+
   return (
     <>
-      <Link href="/players" className="mb-4 inline-block text-sm text-violet-400">
-        ← Players
-      </Link>
+      <BackLink href="/players">Players</BackLink>
 
-      <PageTitle>{player.name}</PageTitle>
+      <PageTitle
+        sub={
+          <span className="flex flex-wrap gap-1.5">
+            {player.jersey_number !== null && <Pill>#{player.jersey_number}</Pill>}
+            {player.position && <Pill tone="accent">{player.position}</Pill>}
+            <Pill>{player.is_human ? 'Human' : 'AI teammate'}</Pill>
+            {player.gamertag && <Pill>{player.gamertag}</Pill>}
+            {!player.is_active && <Pill tone="warn">Inactive</Pill>}
+          </span>
+        }
+      >
+        {player.name}
+      </PageTitle>
 
-      <div className="mb-6 flex flex-wrap gap-1.5">
-        {player.jersey_number !== null && <Pill>#{player.jersey_number}</Pill>}
-        {player.position && <Pill>{player.position}</Pill>}
-        <Pill>{player.is_human ? 'Human' : 'AI teammate'}</Pill>
-        {player.gamertag && <Pill>{player.gamertag}</Pill>}
-        {!player.is_active && <Pill>Inactive</Pill>}
-      </div>
+      {/* Career totals as one banded panel rather than a grid of look-alike
+          tiles. */}
+      <Panel className="mb-8 overflow-hidden">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-4 px-5 py-5">
+          {STATS.map((s) => (
+            <div key={s.key}>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
+                {s.label}
+              </div>
+              <div className="mt-0.5 text-3xl font-bold tabular-nums">
+                {career[s.key] ?? 0}
+              </div>
+            </div>
+          ))}
+          <div className="ml-auto flex gap-8">
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
+                {STATS.map((s) => s.shortLabel).join('+')}
+              </div>
+              <div className="mt-0.5 text-3xl font-bold tabular-nums text-accent-text">
+                {combined}
+              </div>
+            </div>
+            <div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
+                Games
+              </div>
+              <div className="mt-0.5 text-3xl font-bold tabular-nums">
+                {player.is_human ? careerGames : '—'}
+              </div>
+            </div>
+          </div>
+        </div>
+        {player.is_human && careerGames > 0 && (
+          <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line bg-surface-2 px-5 py-2.5 text-xs text-muted">
+            {STATS.map((s) => (
+              <span key={s.key}>
+                {formatAverage(career[s.key] ?? 0, careerGames)}{' '}
+                {s.label.toLowerCase()} per game
+              </span>
+            ))}
+          </div>
+        )}
+      </Panel>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {STATS.map((s) => (
-          <Stat key={s.key} label={s.label} value={career[s.key] ?? 0} />
-        ))}
-        <Stat
-          label={STATS.map((s) => s.shortLabel).join('+')}
-          value={sumStat(career, STAT_KEYS)}
-        />
-        <Stat
-          label="Games played"
-          value={player.is_human ? careerGames : '—'}
-        />
-      </div>
-
-      <h2 className="mb-3 mt-8 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
-        By season
-      </h2>
+      <SectionTitle>By season</SectionTitle>
       {seasonRows.length === 0 ? (
         <Empty>No stats recorded yet.</Empty>
       ) : (
-        <Card className="overflow-x-auto">
+        <Panel className="overflow-x-auto">
           <table className="w-full min-w-[28rem] text-sm">
             <thead>
-              <tr className="border-b border-[var(--color-line)] text-neutral-500">
-                <th className="px-4 py-2 text-left font-semibold">Season</th>
+              <tr className="border-b border-line bg-surface-2 text-xs text-faint">
+                <th scope="col" className="px-4 py-2 text-left font-semibold">
+                  Season
+                </th>
                 {STATS.map((s) => (
-                  <th key={s.key} className="px-2 py-2 text-right font-semibold" title={s.label}>
+                  <th
+                    key={s.key}
+                    scope="col"
+                    className="px-2 py-2 text-right font-semibold"
+                    title={s.label}
+                  >
                     {s.shortLabel}
                   </th>
                 ))}
-                <th className="px-2 py-2 text-right font-semibold">GP</th>
+                <th scope="col" className="px-2 py-2 text-right font-semibold">
+                  GP
+                </th>
                 {STATS.map((s) => (
                   <th
                     key={`avg-${s.key}`}
+                    scope="col"
                     className="px-2 py-2 text-right font-semibold"
                     title={`${s.label} per game`}
                   >
@@ -109,22 +158,29 @@ export default async function PlayerDetailPage(props: {
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--color-line)]">
+            <tbody className="divide-y divide-line">
               {seasonRows.map((row) => (
-                <tr key={row.season.id}>
-                  <td className="px-4 py-3">{row.season.name}</td>
+                <tr key={row.season.id} className="hover:bg-surface-2">
+                  <td className="px-4 py-2.5 font-medium">
+                    {row.season.name}
+                    {row.season.is_current && (
+                      <span className="ml-2 text-[10px] uppercase tracking-wider text-accent-text">
+                        current
+                      </span>
+                    )}
+                  </td>
                   {STATS.map((s) => (
-                    <td key={s.key} className="px-2 py-3 text-right tabular-nums">
+                    <td key={s.key} className="px-2 py-2.5 text-right tabular-nums">
                       {row.stats[s.key] ?? 0}
                     </td>
                   ))}
-                  <td className="px-2 py-3 text-right tabular-nums">
+                  <td className="px-2 py-2.5 text-right tabular-nums">
                     {player.is_human ? row.games : '—'}
                   </td>
                   {STATS.map((s) => (
                     <td
                       key={`avg-${s.key}`}
-                      className="px-2 py-3 text-right tabular-nums text-neutral-400"
+                      className="px-2 py-2.5 text-right tabular-nums text-muted"
                     >
                       {player.is_human
                         ? formatAverage(row.stats[s.key] ?? 0, row.games)
@@ -135,7 +191,7 @@ export default async function PlayerDetailPage(props: {
               ))}
             </tbody>
           </table>
-        </Card>
+        </Panel>
       )}
     </>
   )

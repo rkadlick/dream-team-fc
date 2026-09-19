@@ -1,26 +1,167 @@
 @import "tailwindcss";
 
-/* Dream Team FC — dark theme only. Black ground, white text, violet accent. */
-@theme {
-  --color-ink: #050505;
-  --color-surface: #0f0f11;
-  --color-surface-2: #17171b;
-  --color-line: #26262c;
+/*
+ * Dream Team FC palette. Black / white / violet in both themes.
+ *
+ * Every colour is a runtime custom property so the theme can be swapped on the
+ * <html> element with no re-render. `@theme inline` below re-exports them as
+ * Tailwind tokens, which is what makes `bg-surface`, `text-muted`,
+ * `border-line` etc. resolve to whichever theme is active.
+ *
+ * Theme resolution (see the inline script in app/layout.tsx):
+ *   no data-theme  -> follow the OS via prefers-color-scheme
+ *   data-theme=... -> the reader's explicit choice wins
+ */
+:root {
+  --dt-bg: #f4f4f7;
+  --dt-surface: #ffffff;
+  --dt-surface-2: #eeeef3;
+  --dt-surface-3: #e4e4ec;
+  --dt-line: #dedee7;
+  --dt-line-strong: #c6c6d4;
+  --dt-fg: #0a0a0f;
+  --dt-muted: #55556a;
+  --dt-faint: #83839a;
+
+  --dt-accent: #6d28d9;
+  --dt-accent-hover: #5b21b6;
+  --dt-accent-fg: #ffffff;
+  --dt-accent-text: #6d28d9;
+  --dt-accent-soft: #ede9fe;
+  --dt-accent-line: #c4b5fd;
+
+  --dt-win: #047857;
+  --dt-win-soft: #d1fae5;
+  --dt-draw: #52525b;
+  --dt-draw-soft: #e4e4e7;
+  --dt-loss: #be123c;
+  --dt-loss-soft: #ffe4e6;
+
+  --dt-warn: #92400e;
+  --dt-warn-soft: #fef3c7;
+  --dt-warn-line: #fcd34d;
+
+  --dt-shadow: 0 1px 2px rgb(10 10 15 / 0.06), 0 8px 24px -12px rgb(10 10 15 / 0.18);
+  --dt-shadow-lift: 0 2px 4px rgb(10 10 15 / 0.08), 0 18px 40px -16px rgb(10 10 15 / 0.28);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --dt-bg: #08080a;
+    --dt-surface: #101014;
+    --dt-surface-2: #17171d;
+    --dt-surface-3: #202028;
+    --dt-line: #26262f;
+    --dt-line-strong: #3a3a47;
+    --dt-fg: #fafafa;
+    --dt-muted: #a2a2b2;
+    --dt-faint: #74748a;
+
+    --dt-accent: #7c3aed;
+    --dt-accent-hover: #8b5cf6;
+    --dt-accent-fg: #ffffff;
+    --dt-accent-text: #c4b5fd;
+    --dt-accent-soft: #241a45;
+    --dt-accent-line: #4c2f9c;
+
+    --dt-win: #6ee7b7;
+    --dt-win-soft: #06301f;
+    --dt-draw: #c3c3d1;
+    --dt-draw-soft: #23232b;
+    --dt-loss: #fda4af;
+    --dt-loss-soft: #3d0a18;
+
+    --dt-warn: #fcd34d;
+    --dt-warn-soft: #2b1d05;
+    --dt-warn-line: #7a5a12;
+
+    --dt-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -12px rgb(0 0 0 / 0.7);
+    --dt-shadow-lift: 0 2px 4px rgb(0 0 0 / 0.6), 0 18px 40px -16px rgb(0 0 0 / 0.85);
+
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --dt-bg: #08080a;
+  --dt-surface: #101014;
+  --dt-surface-2: #17171d;
+  --dt-surface-3: #202028;
+  --dt-line: #26262f;
+  --dt-line-strong: #3a3a47;
+  --dt-fg: #fafafa;
+  --dt-muted: #a2a2b2;
+  --dt-faint: #74748a;
+
+  --dt-accent: #7c3aed;
+  --dt-accent-hover: #8b5cf6;
+  --dt-accent-fg: #ffffff;
+  --dt-accent-text: #c4b5fd;
+  --dt-accent-soft: #241a45;
+  --dt-accent-line: #4c2f9c;
+
+  --dt-win: #6ee7b7;
+  --dt-win-soft: #06301f;
+  --dt-draw: #c3c3d1;
+  --dt-draw-soft: #23232b;
+  --dt-loss: #fda4af;
+  --dt-loss-soft: #3d0a18;
+
+  --dt-warn: #fcd34d;
+  --dt-warn-soft: #2b1d05;
+  --dt-warn-line: #7a5a12;
+
+  --dt-shadow: 0 1px 2px rgb(0 0 0 / 0.5), 0 8px 24px -12px rgb(0 0 0 / 0.7);
+  --dt-shadow-lift: 0 2px 4px rgb(0 0 0 / 0.6), 0 18px 40px -16px rgb(0 0 0 / 0.85);
+
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-bg: var(--dt-bg);
+  --color-surface: var(--dt-surface);
+  --color-surface-2: var(--dt-surface-2);
+  --color-surface-3: var(--dt-surface-3);
+  --color-line: var(--dt-line);
+  --color-line-strong: var(--dt-line-strong);
+  --color-fg: var(--dt-fg);
+  --color-muted: var(--dt-muted);
+  --color-faint: var(--dt-faint);
+
+  --color-accent: var(--dt-accent);
+  --color-accent-hover: var(--dt-accent-hover);
+  --color-accent-fg: var(--dt-accent-fg);
+  --color-accent-text: var(--dt-accent-text);
+  --color-accent-soft: var(--dt-accent-soft);
+  --color-accent-line: var(--dt-accent-line);
+
+  --color-win: var(--dt-win);
+  --color-win-soft: var(--dt-win-soft);
+  --color-draw: var(--dt-draw);
+  --color-draw-soft: var(--dt-draw-soft);
+  --color-loss: var(--dt-loss);
+  --color-loss-soft: var(--dt-loss-soft);
+
+  --color-warn: var(--dt-warn);
+  --color-warn-soft: var(--dt-warn-soft);
+  --color-warn-line: var(--dt-warn-line);
+
+  --shadow-card: var(--dt-shadow);
+  --shadow-lift: var(--dt-shadow-lift);
+
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
 }
 
-:root {
-  color-scheme: dark;
-}
-
 html {
-  background-color: var(--color-ink);
+  background-color: var(--dt-bg);
 }
 
 body {
-  background-color: var(--color-ink);
-  color: #ffffff;
+  background-color: var(--dt-bg);
+  color: var(--dt-fg);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
@@ -36,6 +177,45 @@ input[type="number"] {
 }
 
 ::selection {
-  background-color: #7c3aed;
+  background-color: var(--dt-accent);
   color: #ffffff;
+}
+
+/* Date pickers ship a dark-on-dark icon; nudge it to the current foreground. */
+:root[data-theme="dark"] input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+}
+
+@keyframes dt-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes dt-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.dt-pop-in {
+  animation: dt-pop-in 0.16s ease-out;
+}
+.dt-fade-in {
+  animation: dt-fade-in 0.16s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dt-pop-in,
+  .dt-fade-in {
+    animation: none;
+  }
 }

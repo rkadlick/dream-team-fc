@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 import { LoginForm } from '@/components/LoginForm'
+import { Panel } from '@/components/ui'
 import { getViewer } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
@@ -19,17 +20,19 @@ export default async function LoginPage(props: {
   if (viewer.isAdmin) redirect(next || '/admin/matches/new')
 
   return (
-    <div className="mx-auto max-w-sm py-8">
-      <h1 className="mb-1 text-2xl font-bold">Admin sign in</h1>
-      <p className="mb-6 text-sm text-neutral-500">
-        Accounts are created in the Supabase dashboard; there is no sign-up.
-      </p>
-      <Suspense>
-        <LoginForm
-          next={next}
-          initialError={error === 'not_authorized' ? 'Not authorized' : null}
-        />
-      </Suspense>
+    <div className="mx-auto max-w-sm py-6 sm:py-12">
+      <Panel className="p-6">
+        <h1 className="text-xl font-bold">Admin sign in</h1>
+        <p className="mb-6 mt-1 text-sm text-muted">
+          Accounts are created in the Supabase dashboard; there is no sign-up.
+        </p>
+        <Suspense>
+          <LoginForm
+            next={next}
+            initialError={error === 'not_authorized' ? 'Not authorized' : null}
+          />
+        </Suspense>
+      </Panel>
     </div>
   )
 }

@@ -1,8 +1,9 @@
-import { Empty, PageTitle } from '@/components/ui'
-import { PlayersTable, type LeaderboardRow } from '@/components/PlayersTable'
-import { SeasonFilter } from '@/components/SeasonFilter'
+import { PlayersView } from '@/components/PlayersView'
+import type { LeaderboardRow } from '@/components/PlayersTable'
+import type { EditablePlayer } from '@/components/RosterAdmin'
 import { STAT_KEYS } from '@/lib/stats-config'
 import { sumStat, totalsByPlayer } from '@/lib/aggregate'
+import { getViewer } from '@/lib/auth'
 import { getMatches, getPlayers, getSeasons, getStatRows } from '@/lib/queries'
 
 export const dynamic = 'force-dynamic'
@@ -14,7 +15,11 @@ export default async function PlayersPage(props: {
   const rawSeason = searchParams.season
   const seasonId = Array.isArray(rawSeason) ? rawSeason[0] : rawSeason ?? ''
 
-  const [players, seasons] = await Promise.all([getPlayers(), getSeasons()])
+  const [players, seasons, viewer] = await Promise.all([
+    getPlayers(),
+    getSeasons(),
+    getViewer(),
+  ])
 
   // All-time when no season is selected; otherwise restrict to that season's
   // matches, which is what scopes the stat rows.
@@ -33,28 +38,37 @@ export default async function PlayersPage(props: {
     jerseyNumber: t.player.jersey_number,
     position: t.player.position,
     isHuman: t.player.is_human,
+    isActive: t.player.is_active,
     stats: t.stats,
     combined: sumStat(t.stats, STAT_KEYS),
     gamesPlayed: t.gamesPlayed,
   }))
 
+  // Only admins need the editable shape, and only they are sent it.
+  let editablePlayers: EditablePlayer[] = []
+  if (viewer.isAdmin) {
+    const allStatRows = seasonId ? await getStatRows() : statRows
+    const withStats = new Set(allStatRows.map((r) => r.player_id))
+    editablePlayers = players.map((player) => ({
+      id: player.id,
+      name: player.name,
+      jersey_number: player.jersey_number,
+      position: player.position,
+      is_human: player.is_human,
+      gamertag: player.gamertag,
+      is_active: player.is_active,
+      linkedToMe: Boolean(player.user_id) && player.user_id === viewer.userId,
+      hasStats: withStats.has(player.id),
+    }))
+  }
+
   return (
-    <>
-      <PageTitle>Players</PageTitle>
-      <SeasonFilter
-        seasons={seasons.map((s) => ({ value: s.id, label: s.name }))}
-        current={seasonId}
-        basePath="/players"
-      />
-      {rows.length === 0 ? (
-        <Empty>No players on the roster yet.</Empty>
-      ) : (
-        <PlayersTable rows={rows} />
-      )}
-      <p className="mt-3 text-xs text-neutral-600">
-        Games played and per-game averages are tracked for human players only;
-        AI teammates show “—”.
-      </p>
-    </>
+    <PlayersView
+      rows={rows}
+      seasons={seasons.map((s) => ({ value: s.id, label: s.name }))}
+      currentSeason={seasonId}
+      isAdmin={viewer.isAdmin}
+      editablePlayers={editablePlayers}
+    />
   )
 }

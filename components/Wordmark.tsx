@@ -5,11 +5,11 @@
 export function Wordmark({ className = '' }: { className?: string }) {
   return (
     <span
-      className={`font-bold tracking-tight leading-none ${className}`}
+      className={`font-bold leading-none tracking-tight ${className}`}
       aria-label="Dream Team FC"
     >
-      <span className="text-white">DREAM TEAM</span>{' '}
-      <span className="text-violet-400">FC</span>
+      <span className="text-fg">DREAM TEAM</span>{' '}
+      <span className="text-accent-text">FC</span>
     </span>
   )
 }

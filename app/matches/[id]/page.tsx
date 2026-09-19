@@ -1,25 +1,33 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
+  BackLink,
   ButtonLink,
-  Card,
   Empty,
   PageTitle,
+  Panel,
   Pill,
   ResultBadge,
+  SectionTitle,
 } from '@/components/ui'
-import { formatDate, formatPlayerLabel, formatScore } from '@/lib/format'
+import { formatDate, formatPlayerLabel } from '@/lib/format'
 import { STATS, pickStats } from '@/lib/stats-config'
 import { getViewer } from '@/lib/auth'
-import { getGameTypes, getMatch, getPlayers, getSeasons, getStatRows } from '@/lib/queries'
+import {
+  getGameTypes,
+  getMatch,
+  getPlayers,
+  getSeasons,
+  getStatRows,
+} from '@/lib/queries'
 
 export const dynamic = 'force-dynamic'
 
 function Field({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 px-4 py-3">
-      <span className="text-sm text-neutral-500">{label}</span>
-      <span className="text-right text-sm font-medium">{value}</span>
+    <div className="flex items-baseline justify-between gap-4 px-4 py-2.5">
+      <span className="text-sm text-muted">{label}</span>
+      <span className="text-right text-sm font-semibold tabular-nums">{value}</span>
     </div>
   )
 }
@@ -56,17 +64,23 @@ export default async function MatchDetailPage(props: {
       return diff !== 0 ? diff : a.player!.name.localeCompare(b.player!.name)
     })
 
+  const home = match.home_away === 'home'
+
   return (
     <>
-      <Link href="/matches" className="mb-4 inline-block text-sm text-violet-400">
-        ← Matches
-      </Link>
+      <BackLink href="/matches">Matches</BackLink>
 
       <PageTitle
+        sub={`${formatDate(match.played_on)} · ${home ? 'Home' : 'Away'} · ${
+          gameType?.name ?? 'Game'
+        }`}
         action={
           viewer.isAdmin ? (
-            <ButtonLink href={`/admin/matches/${match.id}/edit`} variant="secondary">
-              Edit
+            <ButtonLink
+              href={`/admin/matches/${match.id}/edit`}
+              variant="secondary"
+            >
+              <span aria-hidden>✎</span> Edit match
             </ButtonLink>
           ) : undefined
         }
@@ -74,98 +88,151 @@ export default async function MatchDetailPage(props: {
         {match.opponent}
       </PageTitle>
 
-      <Card className="mb-6 px-4 py-5">
-        <div className="flex items-center gap-4">
-          <ResultBadge result={match.result} />
-          <div className="text-3xl font-bold tabular-nums">{formatScore(match)}</div>
+      {/* A scoreboard, not another text row. */}
+      <Panel className="mb-8 overflow-hidden">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 px-4 py-6 sm:px-8">
+          <div className="min-w-0 text-right">
+            <div className="truncate text-sm font-semibold sm:text-base">
+              Dream Team FC
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-faint">
+              {home ? 'Home' : 'Away'}
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-4xl font-bold tabular-nums sm:text-5xl">
+              {match.score_us}
+            </span>
+            <span className="text-2xl text-faint">–</span>
+            <span className="text-4xl font-bold tabular-nums sm:text-5xl">
+              {match.score_them}
+            </span>
+          </div>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold sm:text-base">
+              {match.opponent}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-faint">
+              {home ? 'Away' : 'Home'}
+            </div>
+          </div>
         </div>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          <Pill>{formatDate(match.played_on)}</Pill>
-          <Pill>{match.home_away === 'home' ? 'Home' : 'Away'}</Pill>
-          <Pill>{gameType?.name ?? 'Game'}</Pill>
+
+        <div className="flex flex-wrap items-center justify-center gap-1.5 border-t border-line bg-surface-2 px-4 py-3">
+          <ResultBadge result={match.result} size="lg" />
+          {match.went_to_overtime && <Pill>Overtime</Pill>}
+          {match.went_to_pks && (
+            <Pill>
+              Shootout{' '}
+              {match.pk_us !== null && match.pk_them !== null
+                ? `${match.pk_us}–${match.pk_them}`
+                : 'not recorded'}
+            </Pill>
+          )}
           <Pill>Division {match.division}</Pill>
           <Pill>{season?.name ?? 'Season'}</Pill>
         </div>
-      </Card>
+      </Panel>
 
-      <Card className="mb-6 divide-y divide-[var(--color-line)]">
-        <Field label="Goals for" value={match.score_us} />
-        <Field label="Goals against" value={match.score_them} />
-        <Field label="Opponent own goals" value={match.opp_own_goals} />
-        <Field label="Overtime" value={match.went_to_overtime ? 'Yes' : 'No'} />
-        <Field label="Penalty shootout" value={match.went_to_pks ? 'Yes' : 'No'} />
-        {match.went_to_pks && (
-          <Field
-            label="Shootout score"
-            value={
-              match.pk_us !== null && match.pk_them !== null
-                ? `${match.pk_us}-${match.pk_them}`
-                : 'Not recorded'
-            }
-          />
-        )}
-        <Field label="Result" value={match.result} />
-      </Card>
-
-      {match.notes && (
-        <Card className="mb-6 px-4 py-4">
-          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-neutral-500">
-            Notes
-          </div>
-          <p className="whitespace-pre-wrap text-sm text-neutral-200">{match.notes}</p>
-        </Card>
-      )}
-
-      <h2 className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
-        Player stats
-      </h2>
-      {lines.length === 0 ? (
-        <Empty>No player stats recorded for this match.</Empty>
-      ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-line)] text-neutral-500">
-                <th className="px-4 py-2 text-left font-semibold">Player</th>
-                {STATS.map((s) => (
-                  <th
-                    key={s.key}
-                    className="w-14 px-2 py-2 text-right font-semibold"
-                    title={s.label}
-                  >
-                    {s.shortLabel}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[var(--color-line)]">
-              {lines.map(({ player, stats }) => (
-                <tr key={player!.id}>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/players/${player!.id}`}
-                      className="hover:text-violet-300"
-                    >
-                      {formatPlayerLabel(player!)}
-                    </Link>
-                    {!player!.is_human && (
-                      <span className="ml-2 text-xs text-neutral-600">AI</span>
-                    )}
-                  </td>
-                  {STATS.map((s) => (
-                    <td
-                      key={s.key}
-                      className="px-2 py-3 text-right tabular-nums"
-                    >
-                      {stats[s.key] ?? 0}
-                    </td>
+      <div className="grid gap-8 lg:grid-cols-12">
+        <section className="lg:col-span-7">
+          <SectionTitle>Player stats</SectionTitle>
+          {lines.length === 0 ? (
+            <Empty>No player stats recorded for this match.</Empty>
+          ) : (
+            <Panel className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-line bg-surface-2 text-xs text-faint">
+                    <th scope="col" className="px-4 py-2 text-left font-semibold">
+                      Player
+                    </th>
+                    {STATS.map((s) => (
+                      <th
+                        key={s.key}
+                        scope="col"
+                        className="w-14 px-2 py-2 text-right font-semibold"
+                        title={s.label}
+                      >
+                        {s.shortLabel}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-line">
+                  {lines.map(({ player, stats }) => (
+                    <tr key={player!.id} className="hover:bg-surface-2">
+                      <td className="px-4 py-2.5">
+                        <Link
+                          href={`/players/${player!.id}`}
+                          className="font-medium transition-colors hover:text-accent-text"
+                        >
+                          {formatPlayerLabel(player!)}
+                        </Link>
+                        {!player!.is_human && (
+                          <span className="ml-2 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold text-faint">
+                            AI
+                          </span>
+                        )}
+                      </td>
+                      {STATS.map((s) => (
+                        <td
+                          key={s.key}
+                          className={`px-2 py-2.5 text-right tabular-nums ${
+                            (stats[s.key] ?? 0) > 0 ? 'font-semibold' : 'text-faint'
+                          }`}
+                        >
+                          {stats[s.key] ?? 0}
+                        </td>
+                      ))}
+                    </tr>
                   ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
+                </tbody>
+              </table>
+            </Panel>
+          )}
+        </section>
+
+        <div className="space-y-6 lg:col-span-5">
+          <section>
+            <SectionTitle>Match detail</SectionTitle>
+            <Panel className="divide-y divide-line">
+              <Field label="Goals for" value={match.score_us} />
+              <Field label="Goals against" value={match.score_them} />
+              <Field label="Opponent own goals" value={match.opp_own_goals} />
+              <Field
+                label="Overtime"
+                value={match.went_to_overtime ? 'Yes' : 'No'}
+              />
+              <Field
+                label="Penalty shootout"
+                value={match.went_to_pks ? 'Yes' : 'No'}
+              />
+              {match.went_to_pks && (
+                <Field
+                  label="Shootout score"
+                  value={
+                    match.pk_us !== null && match.pk_them !== null
+                      ? `${match.pk_us}–${match.pk_them}`
+                      : 'Not recorded'
+                  }
+                />
+              )}
+            </Panel>
+          </section>
+
+          {match.notes && (
+            <section>
+              <SectionTitle>Notes</SectionTitle>
+              <Panel tone="quiet" className="px-4 py-3">
+                <p className="whitespace-pre-wrap text-sm text-muted">
+                  {match.notes}
+                </p>
+              </Panel>
+            </section>
+          )}
+        </div>
+      </div>
     </>
   )
 }

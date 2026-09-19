@@ -1,7 +1,65 @@
 import Link from 'next/link'
 import type { ComponentProps, ReactNode } from 'react'
 
-export function Card({
+/* ------------------------------------------------------------------ *
+ * Surfaces
+ *
+ * Three deliberately different weights, so a page never reads as a stack
+ * of identical boxes:
+ *   <Panel>  — the default container for content that already exists.
+ *   <Inset>  — a recessed well used *inside* a panel.
+ *   <Draft>  — a dashed, accent-tinted container for "this creates
+ *              something new", which is what tells an Add form apart from
+ *              the records listed beneath it.
+ * ------------------------------------------------------------------ */
+
+export function Panel({
+  children,
+  className = '',
+  tone = 'default',
+  interactive = false,
+}: {
+  children: ReactNode
+  className?: string
+  tone?: 'default' | 'accent' | 'quiet'
+  interactive?: boolean
+}) {
+  const tones = {
+    default: 'border-line bg-surface',
+    accent: 'border-accent-line bg-accent-soft',
+    quiet: 'border-line bg-surface-2',
+  }
+  return (
+    <div
+      className={`rounded-2xl border shadow-card ${tones[tone]} ${
+        interactive
+          ? 'transition-[border-color,box-shadow,transform] hover:border-accent-line hover:shadow-lift'
+          : ''
+      } ${className}`}
+    >
+      {children}
+    </div>
+  )
+}
+
+/** Backwards-compatible alias; Panel is the name to reach for in new code. */
+export const Card = Panel
+
+export function Inset({
+  children,
+  className = '',
+}: {
+  children: ReactNode
+  className?: string
+}) {
+  return (
+    <div className={`rounded-xl border border-line bg-surface-2 ${className}`}>
+      {children}
+    </div>
+  )
+}
+
+export function Draft({
   children,
   className = '',
 }: {
@@ -10,22 +68,18 @@ export function Card({
 }) {
   return (
     <div
-      className={`rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] ${className}`}
+      className={`rounded-2xl border-2 border-dashed border-accent-line bg-accent-soft ${className}`}
     >
       {children}
     </div>
   )
 }
 
-export function SectionTitle({ children }: { children: ReactNode }) {
-  return (
-    <h2 className="text-xs font-semibold uppercase tracking-[0.18em] text-neutral-400">
-      {children}
-    </h2>
-  )
-}
+/* ------------------------------------------------------------------ *
+ * Headings
+ * ------------------------------------------------------------------ */
 
-export function PageTitle({
+export function SectionTitle({
   children,
   action,
 }: {
@@ -33,23 +87,68 @@ export function PageTitle({
   action?: ReactNode
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-      <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{children}</h1>
+    <div className="mb-3 flex items-center justify-between gap-3">
+      <h2 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-faint">
+        {children}
+      </h2>
       {action}
     </div>
   )
 }
 
-export function ResultBadge({ result }: { result: string }) {
-  // Muted green / red are reserved for exactly this.
+export function PageTitle({
+  children,
+  sub,
+  action,
+}: {
+  children: ReactNode
+  sub?: ReactNode
+  action?: ReactNode
+}) {
+  return (
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-x-4 gap-y-3">
+      <div className="min-w-0">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">{children}</h1>
+        {sub && <p className="mt-1 text-sm text-muted">{sub}</p>}
+      </div>
+      {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}
+    </div>
+  )
+}
+
+export function BackLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <Link
+      href={href}
+      className="mb-4 inline-flex items-center gap-1 text-sm font-medium text-muted transition-colors hover:text-accent-text"
+    >
+      <span aria-hidden>←</span>
+      {children}
+    </Link>
+  )
+}
+
+/* ------------------------------------------------------------------ *
+ * Indicators
+ * ------------------------------------------------------------------ */
+
+export function ResultBadge({
+  result,
+  size = 'sm',
+}: {
+  result: string
+  size?: 'sm' | 'lg'
+}) {
+  // Green / red are reserved for exactly this.
   const styles: Record<string, string> = {
-    W: 'bg-emerald-900/50 text-emerald-300 ring-emerald-700/50',
-    D: 'bg-neutral-800 text-neutral-300 ring-neutral-600/60',
-    L: 'bg-rose-950/60 text-rose-300 ring-rose-800/50',
+    W: 'bg-win-soft text-win ring-win/30',
+    D: 'bg-draw-soft text-draw ring-draw/30',
+    L: 'bg-loss-soft text-loss ring-loss/30',
   }
+  const dims = size === 'lg' ? 'h-11 w-11 text-lg' : 'h-7 w-7 text-sm'
   return (
     <span
-      className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-sm font-bold ring-1 ${
+      className={`inline-flex shrink-0 items-center justify-center rounded-lg font-bold ring-1 ${dims} ${
         styles[result] ?? styles.D
       }`}
     >
@@ -58,9 +157,22 @@ export function ResultBadge({ result }: { result: string }) {
   )
 }
 
-export function Pill({ children }: { children: ReactNode }) {
+export function Pill({
+  children,
+  tone = 'default',
+}: {
+  children: ReactNode
+  tone?: 'default' | 'accent' | 'warn'
+}) {
+  const tones = {
+    default: 'border-line bg-surface-2 text-muted',
+    accent: 'border-accent-line bg-accent-soft text-accent-text',
+    warn: 'border-warn-line bg-warn-soft text-warn',
+  }
   return (
-    <span className="rounded-full border border-[var(--color-line)] bg-[var(--color-surface-2)] px-2.5 py-1 text-xs text-neutral-300">
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${tones[tone]}`}
+    >
       {children}
     </span>
   )
@@ -68,20 +180,25 @@ export function Pill({ children }: { children: ReactNode }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return (
-    <p className="rounded-2xl border border-dashed border-[var(--color-line)] px-4 py-10 text-center text-sm text-neutral-500">
+    <p className="rounded-2xl border border-dashed border-line px-4 py-10 text-center text-sm text-faint">
       {children}
     </p>
   )
 }
 
+/* ------------------------------------------------------------------ *
+ * Controls
+ * ------------------------------------------------------------------ */
+
 const buttonBase =
-  'inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50'
+  'inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-3.5 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-45'
 
 export const buttonStyles = {
-  primary: `${buttonBase} bg-violet-600 text-white hover:bg-violet-500`,
-  secondary: `${buttonBase} border border-[var(--color-line)] bg-[var(--color-surface-2)] text-white hover:border-violet-600`,
-  danger: `${buttonBase} border border-rose-900/70 bg-rose-950/40 text-rose-200 hover:bg-rose-950/70`,
-  ghost: `${buttonBase} text-neutral-300 hover:text-white`,
+  primary: `${buttonBase} bg-accent text-accent-fg hover:bg-accent-hover`,
+  secondary: `${buttonBase} border border-line-strong bg-surface text-fg hover:border-accent hover:text-accent-text`,
+  quiet: `${buttonBase} border border-line bg-surface-2 text-muted hover:text-fg`,
+  danger: `${buttonBase} border border-loss/40 bg-loss-soft text-loss hover:border-loss`,
+  ghost: `${buttonBase} text-muted hover:text-fg`,
 }
 
 export function Button({
@@ -100,8 +217,20 @@ export function ButtonLink({
   return <Link className={`${buttonStyles[variant]} ${className}`} {...props} />
 }
 
-export const fieldStyles =
-  'min-h-11 w-full rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] px-3 text-base text-white outline-none placeholder:text-neutral-600 focus:border-violet-500'
+/** Square icon-only button, for compact row actions. */
+export function iconButtonStyles(active = false) {
+  return `inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border text-sm transition-colors ${
+    active
+      ? 'border-accent-line bg-accent-soft text-accent-text'
+      : 'border-line bg-surface text-muted hover:border-accent-line hover:text-accent-text'
+  }`
+}
+
+/** Width-free, so compact toolbars can size their own controls. */
+export const fieldBase =
+  'min-h-10 rounded-xl border border-line-strong bg-surface px-3 text-base text-fg outline-none transition-colors placeholder:text-faint focus:border-accent focus:ring-2 focus:ring-accent/25'
+
+export const fieldStyles = `${fieldBase} w-full`
 
 export function Label({
   children,
@@ -113,20 +242,44 @@ export function Label({
   return (
     <label
       htmlFor={htmlFor}
-      className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-neutral-400"
+      className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-faint"
     >
       {children}
     </label>
   )
 }
 
-export function Stat({ label, value }: { label: string; value: ReactNode }) {
+/* ------------------------------------------------------------------ *
+ * Stats
+ * ------------------------------------------------------------------ */
+
+export function Stat({
+  label,
+  value,
+  tone = 'default',
+}: {
+  label: string
+  value: ReactNode
+  tone?: 'default' | 'accent'
+}) {
   return (
-    <div className="rounded-2xl border border-[var(--color-line)] bg-[var(--color-surface)] px-4 py-3">
-      <div className="text-xs font-semibold uppercase tracking-wider text-neutral-500">
+    <div
+      className={`rounded-xl border px-3 py-2.5 ${
+        tone === 'accent'
+          ? 'border-accent-line bg-accent-soft'
+          : 'border-line bg-surface'
+      }`}
+    >
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-faint">
         {label}
       </div>
-      <div className="mt-1 text-2xl font-bold tabular-nums">{value}</div>
+      <div
+        className={`mt-0.5 text-xl font-bold tabular-nums sm:text-2xl ${
+          tone === 'accent' ? 'text-accent-text' : ''
+        }`}
+      >
+        {value}
+      </div>
     </div>
   )
 }

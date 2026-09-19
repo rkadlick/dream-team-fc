@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, Label, buttonStyles, fieldStyles } from '@/components/ui'
+import { Panel, Label, buttonStyles, fieldStyles } from '@/components/ui'
 import { STATS, emptyStats } from '@/lib/stats-config'
 import { formatPlayerLabel, todayIso } from '@/lib/format'
 import { RESULTS, type Result } from '@/lib/constants'
@@ -159,6 +159,31 @@ export function MatchForm({
     (p) => !lines.some((l) => l.playerId === p.id)
   )
 
+  // "Am I editing?" feedback. Every field on this form is controlled, so a
+  // serialised snapshot compared against the one taken on mount is enough to
+  // know whether anything has actually moved.
+  const snapshot = JSON.stringify({
+    playedOn,
+    seasonId,
+    division,
+    gameTypeId,
+    opponent,
+    homeAway,
+    scoreUs,
+    scoreThem,
+    oppOwnGoals,
+    overtime,
+    pks,
+    pkUs,
+    pkThem,
+    notes,
+    result: effectiveResult,
+    lines,
+  })
+  // Captured once, on first render, then compared on every later one.
+  const [initialSnapshot] = useState(snapshot)
+  const dirty = snapshot !== initialSnapshot
+
   const setStat = (playerId: string, key: string, value: string) => {
     setLines((prev) =>
       prev.map((l) =>
@@ -241,14 +266,14 @@ export function MatchForm({
   const toggleStyles = (active: boolean) =>
     `min-h-12 flex-1 rounded-xl border text-sm font-semibold transition-colors ${
       active
-        ? 'border-violet-500 bg-violet-600/25 text-violet-200'
-        : 'border-[var(--color-line)] bg-[var(--color-surface-2)] text-neutral-400'
+        ? 'border-accent bg-accent-soft text-accent-text'
+        : 'border-line bg-surface-2 text-muted'
     }`
 
   return (
     <div className="space-y-6 pb-24">
       {/* 1. When and what */}
-      <Card className="space-y-4 p-4">
+      <Panel className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="played_on">Date</Label>
@@ -336,17 +361,17 @@ export function MatchForm({
               <button
                 type="button"
                 onClick={() => setAddingGameType(true)}
-                className="mt-2 text-sm font-medium text-violet-400"
+                className="mt-2 text-sm font-medium text-accent-text"
               >
                 + Add new game type
               </button>
             </>
           )}
         </div>
-      </Card>
+      </Panel>
 
       {/* 2. Opponent */}
-      <Card className="space-y-4 p-4">
+      <Panel className="space-y-4 p-4">
         <div>
           <Label htmlFor="opponent">Opponent</Label>
           <input
@@ -383,10 +408,10 @@ export function MatchForm({
             </button>
           </div>
         </div>
-      </Card>
+      </Panel>
 
       {/* 3. Score */}
-      <Card className="space-y-4 p-4">
+      <Panel className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
             <Label htmlFor="score_us">Us</Label>
@@ -480,10 +505,10 @@ export function MatchForm({
             </div>
           </div>
         )}
-      </Card>
+      </Panel>
 
       {/* 4. Result */}
-      <Card className="p-4">
+      <Panel className="p-4">
         <Label>Result</Label>
         <div className="flex gap-2">
           {RESULTS.map((r) => (
@@ -500,14 +525,14 @@ export function MatchForm({
             </button>
           ))}
         </div>
-        <p className="mt-2 text-xs text-neutral-500">
-          Suggested: <span className="font-semibold text-neutral-300">{suggested}</span>
+        <p className="mt-2 text-xs text-faint">
+          Suggested: <span className="font-semibold text-fg">{suggested}</span>
           {effectiveResult !== suggested && ' — you have overridden it.'}
         </p>
-      </Card>
+      </Panel>
 
       {/* 5. Notes */}
-      <Card className="p-4">
+      <Panel className="p-4">
         <Label htmlFor="notes">Notes (optional)</Label>
         <textarea
           id="notes"
@@ -516,13 +541,13 @@ export function MatchForm({
           onChange={(e) => setNotes(e.target.value)}
           className={`${fieldStyles} min-h-24 py-2`}
         />
-      </Card>
+      </Panel>
 
       {/* 6. Player stats */}
-      <Card className="p-4">
+      <Panel className="p-4">
         <div className="mb-3 flex items-baseline justify-between">
           <Label>Player stats</Label>
-          <span className="text-xs text-neutral-500">
+          <span className="text-xs text-faint">
             {attributedGoals} + {num(oppOwnGoals)} OG = {goalTotal} / {num(scoreUs)}
           </span>
         </div>
@@ -533,20 +558,20 @@ export function MatchForm({
             return (
               <div
                 key={line.playerId}
-                className="rounded-xl border border-[var(--color-line)] bg-[var(--color-surface-2)] p-3"
+                className="rounded-xl border border-line bg-surface-2 p-3"
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-sm font-medium">
                     {player ? formatPlayerLabel(player) : 'Unknown player'}
                     {player && !player.is_human && (
-                      <span className="ml-2 text-xs text-neutral-600">AI</span>
+                      <span className="ml-2 text-xs text-faint">AI</span>
                     )}
                   </span>
                   <button
                     type="button"
                     onClick={() => removePlayer(line.playerId)}
                     aria-label={`Remove ${player?.name ?? 'player'}`}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-neutral-500 hover:bg-neutral-800 hover:text-white"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 hover:text-fg"
                   >
                     ✕
                   </button>
@@ -556,7 +581,7 @@ export function MatchForm({
                     <div key={stat.key}>
                       <label
                         htmlFor={`${line.playerId}-${stat.key}`}
-                        className="mb-1 block text-[11px] uppercase tracking-wider text-neutral-500"
+                        className="mb-1 block text-[11px] uppercase tracking-wider text-faint"
                       >
                         {stat.label}
                       </label>
@@ -600,32 +625,45 @@ export function MatchForm({
         )}
 
         {goalsMismatch && (
-          <div className="mt-4 rounded-xl border border-amber-800/60 bg-amber-950/30 p-3 text-sm text-amber-200">
+          <div className="mt-4 rounded-xl border border-warn-line bg-warn-soft p-3 text-sm text-warn">
             <p>
               Player goals ({attributedGoals}) plus opponent own goals (
               {num(oppOwnGoals)}) is {goalTotal}, but the score says {num(scoreUs)}.
             </p>
-            <label className="mt-3 flex items-start gap-2 text-amber-100">
+            <label className="mt-3 flex items-start gap-2 text-warn">
               <input
                 type="checkbox"
                 checked={allowUnattributed}
                 onChange={(e) => setAllowUnattributed(e.target.checked)}
-                className="mt-0.5 h-5 w-5 accent-violet-500"
+                className="mt-0.5 h-5 w-5 accent-[var(--dt-accent)]"
               />
               <span>Save anyway (goals not fully attributed)</span>
             </label>
           </div>
         )}
-      </Card>
+      </Panel>
 
       {error && (
-        <p className="rounded-xl border border-rose-900/70 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+        <p className="rounded-xl border border-loss/40 bg-loss-soft px-3 py-2 text-sm text-loss">
           {error}
         </p>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-[var(--color-line)] bg-black/90 p-3 backdrop-blur">
-        <div className="mx-auto flex max-w-5xl gap-2">
+      <div className="fixed inset-x-0 bottom-0 border-t border-line bg-bg/90 p-3 backdrop-blur">
+        <div className="mx-auto max-w-6xl">
+          <div
+            aria-live="polite"
+            className="mb-1.5 px-1 text-xs font-medium"
+          >
+            {dirty ? (
+              <span className="inline-flex items-center gap-1 text-warn">
+                <span aria-hidden>●</span> Unsaved changes
+              </span>
+            ) : initial ? (
+              <span className="text-faint">No changes yet</span>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
           <button
             type="button"
             onClick={() => router.back()}
@@ -645,11 +683,12 @@ export function MatchForm({
           <button
             type="button"
             onClick={submit}
-            disabled={pending}
+            disabled={pending || (Boolean(initial) && !dirty)}
             className={`${buttonStyles.primary} flex-[2]`}
           >
             {pending ? 'Saving…' : initial ? 'Save changes' : 'Save match'}
           </button>
+          </div>
         </div>
       </div>
 
@@ -660,9 +699,9 @@ export function MatchForm({
           aria-label="Delete match"
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
         >
-          <Card className="w-full max-w-sm p-5">
+          <Panel className="w-full max-w-sm p-5">
             <h2 className="text-lg font-bold">Delete this match?</h2>
-            <p className="mt-2 text-sm text-neutral-400">
+            <p className="mt-2 text-sm text-muted">
               The match against {initial.opponent} and all of its player stats
               will be removed. This cannot be undone.
             </p>
@@ -683,7 +722,7 @@ export function MatchForm({
                 {pending ? 'Deleting…' : 'Delete'}
               </button>
             </div>
-          </Card>
+          </Panel>
         </div>
       )}
     </div>

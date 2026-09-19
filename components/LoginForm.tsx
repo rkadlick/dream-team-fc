@@ -8,7 +8,11 @@ import { Label, buttonStyles, fieldStyles } from '@/components/ui'
 function SubmitButton() {
   const { pending } = useFormStatus()
   return (
-    <button type="submit" disabled={pending} className={`${buttonStyles.primary} w-full`}>
+    <button
+      type="submit"
+      disabled={pending}
+      className={`${buttonStyles.primary} w-full`}
+    >
       {pending ? 'Signing in…' : 'Sign in'}
     </button>
   )
@@ -51,7 +55,10 @@ export function LoginForm({
         />
       </div>
       {state.error && (
-        <p className="rounded-xl border border-rose-900/70 bg-rose-950/40 px-3 py-2 text-sm text-rose-200">
+        <p
+          role="alert"
+          className="rounded-xl border border-loss/40 bg-loss-soft px-3 py-2 text-sm text-loss"
+        >
           {state.error}
         </p>
       )}

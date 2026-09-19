@@ -155,15 +155,21 @@ supabase gen types typescript --local --schema public > lib/database.types.ts
 app/
   page.tsx                      dashboard
   matches/                      history list + match detail
-  players/                      leaderboard + player detail
+  players/                      roster + leaderboard (admins edit it in place)
   login/                        email + password sign-in (no sign-up)
-  admin/                        match entry, roster, seasons, game types
+  admin/                        match entry, seasons, game types
   auth-actions.ts               sign in / sign out server actions
 components/
   MatchForm.tsx                 the match entry screen (new + edit share it)
   PlayersTable.tsx              sortable leaderboard
+  PlayersView.tsx, RosterAdmin.tsx   roster page + its add/edit dialogs
+  admin/SeasonsManager.tsx, admin/GameTypesManager.tsx
+  ManagedForm.tsx               dirty / saved / error feedback for admin forms
+  Modal.tsx                     the dialog every "add a record" flow uses
+  ThemeToggle.tsx, SeasonTabs.tsx
   TopNav.tsx, Wordmark.tsx, ui.tsx
 lib/
+  action-state.ts               what every admin server action returns
   supabase/client.ts            browser client
   supabase/server.ts            server client bound to the user's cookies
   supabase/proxy.ts             session refresh + /admin/* guard
@@ -205,6 +211,28 @@ averages show "—" for them.
 `played_on` is a plain SQL `date` and is handled everywhere as a `'YYYY-MM-DD'`
 string. `lib/format.ts` formats it by splitting the string, never by
 constructing a `Date`, which would shift the day for anyone west of UTC.
+
+### Theming
+
+`app/globals.css` defines every colour as a `--dt-*` custom property in three
+places: `:root` (light), a `prefers-color-scheme: dark` block guarded with
+`:root:not([data-theme="light"])`, and `:root[data-theme="dark"]`. An
+`@theme inline` block re-exports them as Tailwind tokens, which is what makes
+`bg-surface`, `text-muted`, `border-line` and friends resolve to whichever
+theme is active — so components never name a raw colour.
+
+With no `data-theme` attribute the OS decides; `ThemeToggle` writes `light` or
+`dark` to `localStorage` and onto `<html>`, and a tiny blocking script in
+`app/layout.tsx` replays that choice before first paint so there is no flash.
+
+### Feedback on admin forms
+
+Every admin server action returns an `ActionState` (`lib/action-state.ts`), and
+every admin form is a `ManagedForm`. That is what gives editing a visible
+state: Save stays disabled until something actually changes, an "Unsaved
+changes" marker sits beside it while it is dirty, a "Saved" confirmation
+replaces it after the round trip, and failures render in place rather than
+vanishing.
 
 ---
 
