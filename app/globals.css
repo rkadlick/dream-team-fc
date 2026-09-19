@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/* Dream Team FC — dark theme only. Black ground, white text, violet accent. */
+@theme {
+  --color-ink: #050505;
+  --color-surface: #0f0f11;
+  --color-surface-2: #17171b;
+  --color-line: #26262c;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+html {
+  background-color: var(--color-ink);
+}
+
+body {
+  background-color: var(--color-ink);
+  color: #ffffff;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keep number inputs tappable and free of spinner clutter on mobile. */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+::selection {
+  background-color: #7c3aed;
+  color: #ffffff;
+}
