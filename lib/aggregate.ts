@@ -36,6 +36,8 @@ export type MatchRow = {
   // Kept in step with MATCH_STATS in lib/stats-config.ts.
   shots_us: number | null
   shots_them: number | null
+  shots_on_target_us: number | null
+  shots_on_target_them: number | null
   tackles_us: number | null
   tackles_them: number | null
   possession_us: number | null

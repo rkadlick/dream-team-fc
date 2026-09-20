@@ -6,8 +6,6 @@ import { Panel, Label, buttonStyles, fieldStyles } from '@/components/ui'
 import {
   MATCH_STATS,
   MAX_POTG,
-  PRIMARY_STATS,
-  SECONDARY_STATS,
   STATS,
   emptyStats,
   statApplies,
@@ -200,9 +198,6 @@ export function MatchForm({
     )
   )
 
-  /** Lines whose secondary stats are expanded. Collapsed keeps entry quick. */
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-
   const playerById = useMemo(
     () => new Map(players.map((p) => [p.id, p])),
     [players]
@@ -230,6 +225,12 @@ export function MatchForm({
   const targetMismatches = lines.filter((l) => {
     const shots = optNum(l.stats.shots)
     const onTarget = optNum(l.stats.shots_on_target)
+    return shots !== null && onTarget !== null && onTarget > shots
+  })
+
+  const teamShotsOff = (['us', 'them'] as const).filter((side) => {
+    const shots = optNum(matchStats[`shots_${side}`])
+    const onTarget = optNum(matchStats[`shots_on_target_${side}`])
     return shots !== null && onTarget !== null && onTarget > shots
   })
 
@@ -290,11 +291,27 @@ export function MatchForm({
     setLines((prev) => prev.filter((l) => l.playerId !== playerId))
     // A player who did not appear cannot be player of the match.
     setPotgIds((prev) => prev.filter((id) => id !== playerId))
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      next.delete(playerId)
-      return next
-    })
+  }
+
+  /**
+   * Fills this player's blank boxes with 0; anything already typed is kept.
+   * Stats that do not apply (saves for an outfielder) stay blank, otherwise
+   * the 0 would make the hidden box appear.
+   */
+  const zeroBlanks = (playerId: string) => {
+    const position = playerById.get(playerId)?.position ?? null
+    setLines((prev) =>
+      prev.map((l) => {
+        if (l.playerId !== playerId) return l
+        const stats = { ...l.stats }
+        for (const stat of STATS) {
+          if ((stats[stat.key] ?? '').trim() !== '') continue
+          if (!statApplies(stat, position, null)) continue
+          stats[stat.key] = '0'
+        }
+        return { ...l, stats }
+      })
+    )
   }
 
   const togglePotg = (playerId: string) => {
@@ -305,15 +322,6 @@ export function MatchForm({
           ? prev
           : [...prev, playerId]
     )
-  }
-
-  const toggleExpanded = (playerId: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev)
-      if (next.has(playerId)) next.delete(playerId)
-      else next.add(playerId)
-      return next
-    })
   }
 
   const addGameType = () => {
@@ -724,6 +732,18 @@ export function MatchForm({
           ))}
         </div>
 
+        {teamShotsOff.length > 0 && (
+          <p className="mt-3 text-xs text-warn">
+            Shots on target are higher than shots for{' '}
+            {teamShotsOff.length === 2
+              ? 'both sides'
+              : teamShotsOff[0] === 'us'
+                ? 'us'
+                : 'them'}
+            . This will still save.
+          </p>
+        )}
+
         {possessionOff && (
           <p className="mt-3 text-xs text-warn">
             Possession adds up to {(possessionUs ?? 0) + (possessionThem ?? 0)}%,
@@ -743,7 +763,8 @@ export function MatchForm({
         </div>
         <p className="mb-3 text-[11px] text-faint">
           Everyone listed here counts as having played this match. Remove anyone
-          who did not feature.
+          who did not feature. Leave a box empty for anything you did not
+          track — empty is not the same as zero.
           {potgIds.length > 0 &&
             ` · ${potgIds.length} of ${MAX_POTG} player-of-the-match picks used.`}
         </p>
@@ -751,16 +772,21 @@ export function MatchForm({
         <div className="space-y-2">
           {lines.map((line) => {
             const player = playerById.get(line.playerId)
-            const isOpen = expanded.has(line.playerId)
             const isPotg = potgIds.includes(line.playerId)
-            // Shown on the collapsed row so tracked stats are not hidden away.
-            const filledExtras = SECONDARY_STATS.filter(
-              (stat) => optNum(line.stats[stat.key]) !== null
-            ).length
+            const shown = STATS.filter((stat) =>
+              statApplies(
+                stat,
+                player?.position ?? null,
+                optNum(line.stats[stat.key])
+              )
+            )
+            const hasBlanks = shown.some(
+              (stat) => (line.stats[stat.key] ?? '').trim() === ''
+            )
             return (
               <div
                 key={line.playerId}
-                className="rounded-xl border border-line bg-surface-2 p-3"
+                className="rounded-xl border border-line bg-surface-2 p-2.5"
               >
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <span className="min-w-0 truncate text-sm font-medium">
@@ -781,83 +807,48 @@ export function MatchForm({
                     type="button"
                     onClick={() => removePlayer(line.playerId)}
                     aria-label={`Remove ${player?.name ?? 'player'}`}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 hover:text-fg"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 hover:text-fg"
                   >
                     ✕
                   </button>
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  {PRIMARY_STATS.map((stat) => (
-                    <div key={stat.key}>
+                <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
+                  {shown.map((stat) => (
+                    <div key={stat.key} className="min-w-0">
                       <label
                         htmlFor={`${line.playerId}-${stat.key}`}
-                        className="mb-1 block text-[11px] uppercase tracking-wider text-faint"
+                        title={stat.label}
+                        className="mb-0.5 block truncate text-center text-[10px] font-semibold uppercase tracking-wider text-faint"
                       >
-                        {stat.label}
+                        {stat.shortLabel}
                       </label>
                       <input
                         id={`${line.playerId}-${stat.key}`}
                         type="number"
                         inputMode="numeric"
                         min={0}
-                        value={line.stats[stat.key] ?? '0'}
+                        placeholder="—"
+                        aria-label={stat.label}
+                        value={line.stats[stat.key] ?? ''}
                         onChange={(e) =>
                           setStat(line.playerId, stat.key, e.target.value)
                         }
-                        className={`${fieldStyles} h-12 text-center text-lg font-semibold`}
+                        className={`${fieldStyles} h-10 px-1 text-center text-base font-semibold`}
                       />
                     </div>
                   ))}
                 </div>
 
-                {isOpen && (
-                  <div className="mt-2 grid grid-cols-2 gap-2 border-t border-line pt-3">
-                    {SECONDARY_STATS.filter((stat) =>
-                      statApplies(
-                        stat,
-                        player?.position ?? null,
-                        optNum(line.stats[stat.key])
-                      )
-                    ).map((stat) => (
-                      <div key={stat.key}>
-                        <label
-                          htmlFor={`${line.playerId}-${stat.key}`}
-                          className="mb-1 block text-[11px] uppercase tracking-wider text-faint"
-                        >
-                          {stat.label}
-                        </label>
-                        <input
-                          id={`${line.playerId}-${stat.key}`}
-                          type="number"
-                          inputMode="numeric"
-                          min={0}
-                          placeholder="—"
-                          value={line.stats[stat.key] ?? ''}
-                          onChange={(e) =>
-                            setStat(line.playerId, stat.key, e.target.value)
-                          }
-                          className={`${fieldStyles} h-12 text-center text-lg font-semibold`}
-                        />
-                      </div>
-                    ))}
-                    <p className="col-span-2 text-[11px] text-faint">
-                      Leave a box empty for anything you did not track. Empty is
-                      not the same as zero.
-                    </p>
-                  </div>
-                )}
-
                 <div className="mt-2 flex items-center justify-between gap-2">
+                  {/* A form helper, so it reads as a quiet text action rather
+                      than the bordered toggle that records a stat. */}
                   <button
                     type="button"
-                    onClick={() => toggleExpanded(line.playerId)}
-                    aria-expanded={isOpen}
-                    className="text-xs font-medium text-accent-text"
+                    onClick={() => zeroBlanks(line.playerId)}
+                    disabled={!hasBlanks}
+                    className="rounded-lg px-1.5 py-1 text-xs font-medium text-muted underline decoration-dotted underline-offset-2 hover:text-fg disabled:no-underline disabled:opacity-40"
                   >
-                    {isOpen ? '− Fewer stats' : '+ More stats'}
-                    {!isOpen && filledExtras > 0 && (
-                      <span className="ml-1 text-faint">({filledExtras})</span>
-                    )}
+                    Set blanks to 0
                   </button>
                   <button
                     type="button"
@@ -895,6 +886,10 @@ export function MatchForm({
                 </option>
               ))}
             </select>
+            <p className="mt-1 text-[11px] text-faint">
+              Only active players are listed. Reactivate someone from the
+              roster to add them here.
+            </p>
           </div>
         )}
 
@@ -933,7 +928,7 @@ export function MatchForm({
         </p>
       )}
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-line bg-bg/90 p-3 backdrop-blur">
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-bg/90 p-3 backdrop-blur">
         <div className="mx-auto max-w-6xl">
           <div
             aria-live="polite"

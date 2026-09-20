@@ -71,10 +71,13 @@ function SortHeader({
 export function PlayersTable({
   rows,
   onEdit,
+  inactive = false,
 }: {
   rows: LeaderboardRow[]
   /** Admins get a per-row edit control; visitors get no extra column at all. */
   onEdit?: (playerId: string) => void
+  /** The inactive-players table: greyed out so it never reads as the live roster. */
+  inactive?: boolean
 }) {
   const [sortKey, setSortKey] = useState<SortKey>(TABLE_STATS[0]?.key ?? 'combined')
   const [asc, setAsc] = useState(false)
@@ -117,7 +120,10 @@ export function PlayersTable({
   }
 
   return (
-    <Panel className="overflow-x-auto">
+    <Panel
+      tone={inactive ? 'quiet' : 'default'}
+      className={`overflow-x-auto ${inactive ? 'border-dashed' : ''}`}
+    >
       <table className="w-full min-w-[34rem] text-sm">
         <thead>
           <tr className="border-b border-line bg-surface-2 text-xs">
@@ -151,7 +157,7 @@ export function PlayersTable({
             {onEdit && <th className="w-12 px-2 py-2" />}
           </tr>
         </thead>
-        <tbody className="divide-y divide-line">
+        <tbody className={`divide-y divide-line ${inactive ? 'opacity-60 grayscale' : ''}`}>
           {sorted.map((r) => (
             <tr key={r.id} className="transition-colors hover:bg-surface-2">
               <td className="py-2.5 pl-4 pr-2">
@@ -169,11 +175,6 @@ export function PlayersTable({
                 {!r.isHuman && (
                   <span className="ml-2 rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold text-faint">
                     AI
-                  </span>
-                )}
-                {!r.isActive && (
-                  <span className="ml-2 text-[10px] uppercase tracking-wider text-faint">
-                    inactive
                   </span>
                 )}
               </td>

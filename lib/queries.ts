@@ -12,7 +12,7 @@ export type GameType = Tables<'game_types'>
  * MatchRow rather than a runtime surprise.
  */
 const MATCH_COLUMNS =
-  'id, season_id, game_type_id, played_on, division, opponent, home_away, score_us, score_them, opp_own_goals, went_to_overtime, went_to_pks, pk_us, pk_them, result, notes, shots_us, shots_them, tackles_us, tackles_them, possession_us, possession_them, pass_accuracy_us, pass_accuracy_them'
+  'id, season_id, game_type_id, played_on, division, opponent, home_away, score_us, score_them, opp_own_goals, went_to_overtime, went_to_pks, pk_us, pk_them, result, notes, shots_us, shots_them, shots_on_target_us, shots_on_target_them, tackles_us, tackles_them, possession_us, possession_them, pass_accuracy_us, pass_accuracy_them'
 
 const PLAYER_COLUMNS =
   'id, name, jersey_number, position, is_human, gamertag, user_id, is_active'

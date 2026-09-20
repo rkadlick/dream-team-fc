@@ -42,8 +42,6 @@ export type StatConfig = {
   leaderboard?: boolean
   /** Only meaningful for goalkeepers. Display-only: the column is always stored. */
   gkOnly?: boolean
-  /** Shown on the match form without expanding the "More stats" section. */
-  primary?: boolean
 }
 
 export const STATS: StatConfig[] = [
@@ -55,7 +53,6 @@ export const STATS: StatConfig[] = [
     inTable: true,
     perGame: true,
     leaderboard: true,
-    primary: true,
   },
   {
     key: 'assists',
@@ -65,7 +62,6 @@ export const STATS: StatConfig[] = [
     inTable: true,
     perGame: true,
     leaderboard: true,
-    primary: true,
   },
   {
     key: 'shots',
@@ -111,8 +107,6 @@ export const CONTRIBUTION_LABEL = CONTRIBUTION_STATS.map((s) => s.shortLabel).jo
 export const TABLE_STATS = STATS.filter((s) => s.inTable)
 export const PER_GAME_STATS = STATS.filter((s) => s.perGame)
 export const LEADERBOARD_STATS = STATS.filter((s) => s.leaderboard)
-export const PRIMARY_STATS = STATS.filter((s) => s.primary)
-export const SECONDARY_STATS = STATS.filter((s) => !s.primary)
 
 /** Player of the match: 1-3 players per match. The rank is a slot, not a placing. */
 export const MAX_POTG = 3
@@ -172,6 +166,7 @@ export type MatchStatConfig = {
 
 export const MATCH_STATS: MatchStatConfig[] = [
   { key: 'shots', label: 'Shots' },
+  { key: 'shots_on_target', label: 'Shots on target' },
   { key: 'tackles', label: 'Tackles' },
   { key: 'possession', label: 'Possession', percent: true },
   { key: 'pass_accuracy', label: 'Pass accuracy', percent: true },
