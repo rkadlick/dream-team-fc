@@ -10,8 +10,8 @@ import {
   ResultBadge,
   SectionTitle,
 } from '@/components/ui'
-import { formatDate, formatPlayerLabel } from '@/lib/format'
-import { STATS, pickStats } from '@/lib/stats-config'
+import { formatDate, formatMatchStat, formatPlayerLabel, formatStat } from '@/lib/format'
+import { MATCH_STATS, STATS, pickStats, statApplies } from '@/lib/stats-config'
 import { getViewer } from '@/lib/auth'
 import {
   getGameTypes,
@@ -55,6 +55,10 @@ export default async function MatchDetailPage(props: {
     .map((row) => ({
       player: playerById.get(row.player_id),
       stats: pickStats(row as Record<string, unknown>),
+      potgRank:
+        row.potg_rank === null || row.potg_rank === undefined
+          ? null
+          : Number(row.potg_rank),
     }))
     .filter((line) => line.player)
     .sort((a, b) => {
@@ -63,6 +67,25 @@ export default async function MatchDetailPage(props: {
         ((a.stats.goals ?? 0) + (a.stats.assists ?? 0))
       return diff !== 0 ? diff : a.player!.name.localeCompare(b.player!.name)
     })
+
+  const potg = lines
+    .filter((line) => line.potgRank !== null)
+    .sort((a, b) => (a.potgRank ?? 0) - (b.potgRank ?? 0))
+
+  // Only show a stat column when at least one player has it recorded, so an
+  // untracked match does not render a wall of em dashes.
+  const shownStats = STATS.filter((stat) =>
+    lines.some((line) => line.stats[stat.key] !== null)
+  )
+
+  const teamStats = MATCH_STATS.map((stat) => ({
+    stat,
+    value: formatMatchStat(
+      match[`${stat.key}_us` as keyof typeof match] as number | null,
+      match[`${stat.key}_them` as keyof typeof match] as number | null,
+      stat.percent
+    ),
+  })).filter((row) => row.value !== null)
 
   const home = match.home_away === 'home'
 
@@ -147,7 +170,7 @@ export default async function MatchDetailPage(props: {
                     <th scope="col" className="px-4 py-2 text-left font-semibold">
                       Player
                     </th>
-                    {STATS.map((s) => (
+                    {shownStats.map((s) => (
                       <th
                         key={s.key}
                         scope="col"
@@ -160,9 +183,20 @@ export default async function MatchDetailPage(props: {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {lines.map(({ player, stats }) => (
+                  {lines.map(({ player, stats, potgRank }) => (
                     <tr key={player!.id} className="hover:bg-surface-2">
                       <td className="px-4 py-2.5">
+                        {potgRank !== null && (
+                          <span
+                            title="Player of the match"
+                            className="mr-1 text-accent-text"
+                          >
+                            <span aria-hidden>★</span>
+                            <span className="sr-only">
+                              Player of the match:{' '}
+                            </span>
+                          </span>
+                        )}
                         <Link
                           href={`/players/${player!.id}`}
                           className="font-medium transition-colors hover:text-accent-text"
@@ -175,14 +209,16 @@ export default async function MatchDetailPage(props: {
                           </span>
                         )}
                       </td>
-                      {STATS.map((s) => (
+                      {shownStats.map((s) => (
                         <td
                           key={s.key}
                           className={`px-2 py-2.5 text-right tabular-nums ${
                             (stats[s.key] ?? 0) > 0 ? 'font-semibold' : 'text-faint'
                           }`}
                         >
-                          {stats[s.key] ?? 0}
+                          {statApplies(s, player!.position, stats[s.key])
+                            ? formatStat(stats[s.key])
+                            : '—'}
                         </td>
                       ))}
                     </tr>
@@ -194,6 +230,50 @@ export default async function MatchDetailPage(props: {
         </section>
 
         <div className="space-y-6 lg:col-span-5">
+          {potg.length > 0 && (
+            <section>
+              <SectionTitle>
+                Player of the match{potg.length > 1 && 'es'}
+              </SectionTitle>
+              <Panel className="divide-y divide-line">
+                {potg.map(({ player }) => (
+                  <Link
+                    key={player!.id}
+                    href={`/players/${player!.id}`}
+                    className="flex items-center gap-2 px-4 py-2.5 transition-colors first:rounded-t-2xl last:rounded-b-2xl hover:bg-surface-2"
+                  >
+                    <span aria-hidden className="text-accent-text">
+                      ★
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {formatPlayerLabel(player!)}
+                    </span>
+                    {!player!.is_human && (
+                      <span className="rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-semibold text-faint">
+                        AI
+                      </span>
+                    )}
+                  </Link>
+                ))}
+              </Panel>
+            </section>
+          )}
+
+          {teamStats.length > 0 && (
+            <section>
+              <SectionTitle>Team stats</SectionTitle>
+              <Panel className="divide-y divide-line">
+                <div className="flex items-baseline justify-between gap-4 border-b border-line bg-surface-2 px-4 py-2 text-[10px] uppercase tracking-wider text-faint">
+                  <span>Stat</span>
+                  <span>Us – Them</span>
+                </div>
+                {teamStats.map(({ stat, value }) => (
+                  <Field key={stat.key} label={stat.label} value={value} />
+                ))}
+              </Panel>
+            </section>
+          )}
+
           <section>
             <SectionTitle>Match detail</SectionTitle>
             <Panel className="divide-y divide-line">

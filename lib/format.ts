@@ -66,7 +66,24 @@ export function formatPlayerLabel(p: {
   return `${number}${p.name}${position}`
 }
 
-export function formatAverage(total: number, games: number): string {
-  if (games <= 0) return '—'
+export function formatAverage(total: number | null, games: number): string {
+  if (total === null || games <= 0) return '—'
   return (total / games).toFixed(2)
+}
+
+/** An optional stat that was never recorded shows as an em dash, not 0. */
+export function formatStat(value: number | null | undefined): string {
+  return value === null || value === undefined ? '—' : String(value)
+}
+
+/** '12 – 9', or '—' when neither side was recorded. */
+export function formatMatchStat(
+  us: number | null,
+  them: number | null,
+  percent = false
+): string | null {
+  if (us === null && them === null) return null
+  const one = (v: number | null) =>
+    v === null ? '—' : percent ? `${v}%` : String(v)
+  return `${one(us)} – ${one(them)}`
 }

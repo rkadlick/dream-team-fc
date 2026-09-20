@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { PageTitle } from '@/components/ui'
 import { MatchForm } from '@/components/MatchForm'
-import { STATS } from '@/lib/stats-config'
+import { STATS, pickMatchStats } from '@/lib/stats-config'
 import {
   getGameTypes,
   getMatch,
@@ -45,10 +45,22 @@ export default async function EditMatchPage(props: {
         defaults={{ seasonId: match.season_id, division: match.division }}
         initial={{
           ...match,
+          matchStats: pickMatchStats(match as unknown as Record<string, unknown>),
           stats: statRows.map((row) => ({
             player_id: row.player_id,
+            potg_rank:
+              row.potg_rank === null || row.potg_rank === undefined
+                ? null
+                : Number(row.potg_rank),
+            // null is preserved so an untracked stat stays blank on the form.
             ...Object.fromEntries(
-              STATS.map((s) => [s.key, Number(row[s.key] ?? 0)])
+              STATS.map((s) => {
+                const raw = row[s.key]
+                if (raw === null || raw === undefined) {
+                  return [s.key, s.optional ? null : 0]
+                }
+                return [s.key, Number(raw)]
+              })
             ),
           })),
         }}

@@ -7,9 +7,14 @@ import {
   Pill,
   SectionTitle,
 } from '@/components/ui'
-import { STATS, STAT_KEYS, emptyStats, pickStats } from '@/lib/stats-config'
-import { formatAverage } from '@/lib/format'
-import { sumStat } from '@/lib/aggregate'
+import {
+  CONTRIBUTION_KEYS,
+  CONTRIBUTION_LABEL,
+  STATS,
+  statApplies,
+} from '@/lib/stats-config'
+import { formatAverage, formatStat } from '@/lib/format'
+import { addRow, emptyBucket, sumStat, type StatBucket } from '@/lib/aggregate'
 import { getMatches, getPlayers, getSeasons, getStatRows } from '@/lib/queries'
 
 export const dynamic = 'force-dynamic'
@@ -31,33 +36,34 @@ export default async function PlayerDetailPage(props: {
   const mine = statRows.filter((r) => r.player_id === player.id)
   const seasonOfMatch = new Map(matches.map((m) => [m.id, m.season_id]))
 
-  const career = emptyStats()
-  let careerGames = 0
-  const bySeason = new Map<string, { stats: Record<string, number>; games: number }>()
+  const careerBucket = emptyBucket()
+  const bySeason = new Map<string, StatBucket>()
 
   for (const row of mine) {
-    const values = pickStats(row as Record<string, unknown>)
     const seasonId = seasonOfMatch.get(row.match_id)
     if (!seasonId) continue
 
     let entry = bySeason.get(seasonId)
     if (!entry) {
-      entry = { stats: emptyStats(), games: 0 }
+      entry = emptyBucket()
       bySeason.set(seasonId, entry)
     }
-    for (const stat of STATS) {
-      career[stat.key] += values[stat.key] ?? 0
-      entry.stats[stat.key] += values[stat.key] ?? 0
-    }
-    careerGames += 1
-    entry.games += 1
+    addRow(careerBucket, row)
+    addRow(entry, row)
   }
 
   const seasonRows = seasons
     .filter((s) => bySeason.has(s.id))
     .map((s) => ({ season: s, ...bySeason.get(s.id)! }))
 
-  const combined = sumStat(career, STAT_KEYS)
+  const career = careerBucket.stats
+  const careerGames = careerBucket.games
+  const combined = sumStat(career, CONTRIBUTION_KEYS)
+
+  /** Only stats that apply to this player and were actually recorded. */
+  const shownStats = STATS.filter(
+    (s) => statApplies(s, player.position, career[s.key]) && career[s.key] !== null
+  )
 
   return (
     <>
@@ -81,43 +87,63 @@ export default async function PlayerDetailPage(props: {
           tiles. */}
       <Panel className="mb-8 overflow-hidden">
         <div className="flex flex-wrap items-center gap-x-8 gap-y-4 px-5 py-5">
-          {STATS.map((s) => (
+          {shownStats.map((s) => (
             <div key={s.key}>
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
                 {s.label}
               </div>
               <div className="mt-0.5 text-3xl font-bold tabular-nums">
-                {career[s.key] ?? 0}
+                {formatStat(career[s.key])}
               </div>
             </div>
           ))}
           <div className="ml-auto flex gap-8">
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
-                {STATS.map((s) => s.shortLabel).join('+')}
+                {CONTRIBUTION_LABEL}
               </div>
               <div className="mt-0.5 text-3xl font-bold tabular-nums text-accent-text">
                 {combined}
               </div>
             </div>
+            {careerBucket.potgAwards > 0 && (
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
+                  POTM
+                </div>
+                <div className="mt-0.5 text-3xl font-bold tabular-nums">
+                  {careerBucket.potgAwards}
+                </div>
+              </div>
+            )}
             <div>
               <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-faint">
                 Games
               </div>
               <div className="mt-0.5 text-3xl font-bold tabular-nums">
-                {player.is_human ? careerGames : '—'}
+                {careerGames}
               </div>
             </div>
           </div>
         </div>
-        {player.is_human && careerGames > 0 && (
+        {careerGames > 0 && (
           <div className="flex flex-wrap gap-x-6 gap-y-1 border-t border-line bg-surface-2 px-5 py-2.5 text-xs text-muted">
-            {STATS.map((s) => (
-              <span key={s.key}>
-                {formatAverage(career[s.key] ?? 0, careerGames)}{' '}
-                {s.label.toLowerCase()} per game
-              </span>
-            ))}
+            {/* Each stat divides by the matches it was actually recorded in, so
+                an untracked match never dilutes the average. */}
+            {shownStats
+              .filter((s) => (careerBucket.statGames[s.key] ?? 0) > 0)
+              .map((s) => (
+                <span key={s.key}>
+                  {formatAverage(career[s.key], careerBucket.statGames[s.key])}{' '}
+                  {s.label.toLowerCase()} per game
+                  {careerBucket.statGames[s.key] !== careerGames && (
+                    <span className="text-faint">
+                      {' '}
+                      (in {careerBucket.statGames[s.key]} tracked)
+                    </span>
+                  )}
+                </span>
+              ))}
           </div>
         )}
       </Panel>
@@ -133,7 +159,7 @@ export default async function PlayerDetailPage(props: {
                 <th scope="col" className="px-4 py-2 text-left font-semibold">
                   Season
                 </th>
-                {STATS.map((s) => (
+                {shownStats.map((s) => (
                   <th
                     key={s.key}
                     scope="col"
@@ -143,19 +169,28 @@ export default async function PlayerDetailPage(props: {
                     {s.shortLabel}
                   </th>
                 ))}
+                <th
+                  scope="col"
+                  className="px-2 py-2 text-right font-semibold"
+                  title="Player of the match awards"
+                >
+                  POTM
+                </th>
                 <th scope="col" className="px-2 py-2 text-right font-semibold">
                   GP
                 </th>
-                {STATS.map((s) => (
-                  <th
-                    key={`avg-${s.key}`}
-                    scope="col"
-                    className="px-2 py-2 text-right font-semibold"
-                    title={`${s.label} per game`}
-                  >
-                    {s.shortLabel}/G
-                  </th>
-                ))}
+                {shownStats
+                  .filter((s) => s.perGame)
+                  .map((s) => (
+                    <th
+                      key={`avg-${s.key}`}
+                      scope="col"
+                      className="px-2 py-2 text-right font-semibold"
+                      title={`${s.label} per game`}
+                    >
+                      {s.shortLabel}/G
+                    </th>
+                  ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-line">
@@ -169,24 +204,31 @@ export default async function PlayerDetailPage(props: {
                       </span>
                     )}
                   </td>
-                  {STATS.map((s) => (
+                  {shownStats.map((s) => (
                     <td key={s.key} className="px-2 py-2.5 text-right tabular-nums">
-                      {row.stats[s.key] ?? 0}
+                      {formatStat(row.stats[s.key])}
                     </td>
                   ))}
                   <td className="px-2 py-2.5 text-right tabular-nums">
-                    {player.is_human ? row.games : '—'}
+                    {row.potgAwards > 0 ? (
+                      row.potgAwards
+                    ) : (
+                      <span className="text-faint">—</span>
+                    )}
                   </td>
-                  {STATS.map((s) => (
-                    <td
-                      key={`avg-${s.key}`}
-                      className="px-2 py-2.5 text-right tabular-nums text-muted"
-                    >
-                      {player.is_human
-                        ? formatAverage(row.stats[s.key] ?? 0, row.games)
-                        : '—'}
-                    </td>
-                  ))}
+                  <td className="px-2 py-2.5 text-right tabular-nums">
+                    {row.games}
+                  </td>
+                  {shownStats
+                    .filter((s) => s.perGame)
+                    .map((s) => (
+                      <td
+                        key={`avg-${s.key}`}
+                        className="px-2 py-2.5 text-right tabular-nums text-muted"
+                      >
+                        {formatAverage(row.stats[s.key], row.statGames[s.key] ?? 0)}
+                      </td>
+                    ))}
                 </tr>
               ))}
             </tbody>

@@ -3,8 +3,13 @@
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 import { Panel, iconButtonStyles } from '@/components/ui'
-import { STATS } from '@/lib/stats-config'
-import { formatAverage } from '@/lib/format'
+import {
+  CONTRIBUTION_LABEL,
+  PER_GAME_STATS,
+  TABLE_STATS,
+  statApplies,
+} from '@/lib/stats-config'
+import { formatAverage, formatStat } from '@/lib/format'
 
 export type LeaderboardRow = {
   id: string
@@ -13,12 +18,16 @@ export type LeaderboardRow = {
   position: string | null
   isHuman: boolean
   isActive: boolean
-  stats: Record<string, number>
+  /** null for an optional stat that has never been recorded for this player. */
+  stats: Record<string, number | null>
+  /** Per stat, the matches in which it was recorded — the average denominator. */
+  statGames: Record<string, number>
   combined: number
-  gamesPlayed: number | null
+  gamesPlayed: number
+  potgAwards: number
 }
 
-type SortKey = 'name' | 'combined' | 'games' | string
+type SortKey = 'name' | 'combined' | 'games' | 'potg' | string
 
 function SortHeader({
   label,
@@ -67,21 +76,23 @@ export function PlayersTable({
   /** Admins get a per-row edit control; visitors get no extra column at all. */
   onEdit?: (playerId: string) => void
 }) {
-  const [sortKey, setSortKey] = useState<SortKey>(STATS[0]?.key ?? 'combined')
+  const [sortKey, setSortKey] = useState<SortKey>(TABLE_STATS[0]?.key ?? 'combined')
   const [asc, setAsc] = useState(false)
 
   const sorted = useMemo(() => {
     const value = (r: LeaderboardRow): number | string => {
       if (sortKey === 'name') return r.name.toLowerCase()
       if (sortKey === 'combined') return r.combined
-      if (sortKey === 'games') return r.gamesPlayed ?? -1
+      if (sortKey === 'games') return r.gamesPlayed
+      if (sortKey === 'potg') return r.potgAwards
       if (sortKey.startsWith('avg:')) {
         const key = sortKey.slice(4)
-        return r.gamesPlayed && r.gamesPlayed > 0
-          ? (r.stats[key] ?? 0) / r.gamesPlayed
-          : -1
+        const games = r.statGames[key] ?? 0
+        // Never recorded sorts below a genuine zero.
+        return games > 0 ? (r.stats[key] ?? 0) / games : -1
       }
-      return r.stats[sortKey] ?? 0
+      // null (never recorded) sorts below 0 (recorded as zero).
+      return r.stats[sortKey] ?? -1
     }
     return [...rows].sort((a, b) => {
       const av = value(a)
@@ -111,7 +122,7 @@ export function PlayersTable({
         <thead>
           <tr className="border-b border-line bg-surface-2 text-xs">
             <SortHeader sortKey={sortKey} asc={asc} onToggle={toggle} label="Player" sortAs="name" className="pl-4 text-left" />
-            {STATS.map((s) => (
+            {TABLE_STATS.map((s) => (
               <SortHeader sortKey={sortKey} asc={asc} onToggle={toggle}
                 key={s.key}
                 label={s.shortLabel}
@@ -121,13 +132,14 @@ export function PlayersTable({
               />
             ))}
             <SortHeader sortKey={sortKey} asc={asc} onToggle={toggle}
-              label={STATS.map((s) => s.shortLabel).join('+')}
+              label={CONTRIBUTION_LABEL}
               sortAs="combined"
-              title="All stats combined"
+              title="Goals and assists combined"
               className="text-right"
             />
+            <SortHeader sortKey={sortKey} asc={asc} onToggle={toggle} label="POTM" sortAs="potg" title="Player of the match awards" className="text-right" />
             <SortHeader sortKey={sortKey} asc={asc} onToggle={toggle} label="GP" sortAs="games" title="Games played" className="text-right" />
-            {STATS.map((s) => (
+            {PER_GAME_STATS.map((s) => (
               <SortHeader sortKey={sortKey} asc={asc} onToggle={toggle}
                 key={`avg-${s.key}`}
                 label={`${s.shortLabel}/G`}
@@ -165,25 +177,28 @@ export function PlayersTable({
                   </span>
                 )}
               </td>
-              {STATS.map((s) => (
+              {TABLE_STATS.map((s) => (
                 <td key={s.key} className="px-2 py-2.5 text-right tabular-nums">
-                  {r.stats[s.key] ?? 0}
+                  {statApplies(s, r.position, r.stats[s.key])
+                    ? formatStat(r.stats[s.key])
+                    : '—'}
                 </td>
               ))}
               <td className="px-2 py-2.5 text-right font-bold tabular-nums text-accent-text">
                 {r.combined}
               </td>
               <td className="px-2 py-2.5 text-right tabular-nums">
-                {r.gamesPlayed ?? '—'}
+                {r.potgAwards > 0 ? r.potgAwards : <span className="text-faint">—</span>}
               </td>
-              {STATS.map((s) => (
+              <td className="px-2 py-2.5 text-right tabular-nums">
+                {r.gamesPlayed}
+              </td>
+              {PER_GAME_STATS.map((s) => (
                 <td
                   key={`avg-${s.key}`}
                   className="px-2 py-2.5 text-right tabular-nums text-muted"
                 >
-                  {r.gamesPlayed === null
-                    ? '—'
-                    : formatAverage(r.stats[s.key] ?? 0, r.gamesPlayed)}
+                  {formatAverage(r.stats[s.key], r.statGames[s.key] ?? 0)}
                 </td>
               ))}
               {onEdit && (

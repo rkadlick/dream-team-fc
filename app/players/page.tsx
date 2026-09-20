@@ -1,7 +1,7 @@
 import { PlayersView } from '@/components/PlayersView'
 import type { LeaderboardRow } from '@/components/PlayersTable'
 import type { EditablePlayer } from '@/components/RosterAdmin'
-import { STAT_KEYS } from '@/lib/stats-config'
+import { CONTRIBUTION_KEYS } from '@/lib/stats-config'
 import { sumStat, totalsByPlayer } from '@/lib/aggregate'
 import { getViewer } from '@/lib/auth'
 import { getMatches, getPlayers, getSeasons, getStatRows } from '@/lib/queries'
@@ -40,8 +40,11 @@ export default async function PlayersPage(props: {
     isHuman: t.player.is_human,
     isActive: t.player.is_active,
     stats: t.stats,
-    combined: sumStat(t.stats, STAT_KEYS),
+    statGames: t.statGames,
+    // Goals and assists only — adding cards into a "combined" figure is noise.
+    combined: sumStat(t.stats, CONTRIBUTION_KEYS),
     gamesPlayed: t.gamesPlayed,
+    potgAwards: t.potgAwards,
   }))
 
   // Only admins need the editable shape, and only they are sent it.

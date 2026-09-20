@@ -9,7 +9,7 @@ import {
 } from '@/components/ui'
 import { formatDateShort, formatScore } from '@/lib/format'
 import { sortMatchesDesc, teamRecord, totalsByPlayer } from '@/lib/aggregate'
-import { STATS } from '@/lib/stats-config'
+import { LEADERBOARD_STATS, statApplies } from '@/lib/stats-config'
 import { getViewer } from '@/lib/auth'
 import {
   getCurrentSeason,
@@ -182,10 +182,14 @@ export default async function DashboardPage() {
         </section>
 
         <div className="space-y-6 lg:col-span-5">
-          {STATS.map((stat) => {
+          {LEADERBOARD_STATS.map((stat) => {
             const leaders = totals
-              .filter((t) => t.stats[stat.key] > 0)
-              .sort((a, b) => b.stats[stat.key] - a.stats[stat.key])
+              .filter(
+                (t) =>
+                  (t.stats[stat.key] ?? 0) > 0 &&
+                  statApplies(stat, t.player.position, t.stats[stat.key])
+              )
+              .sort((a, b) => (b.stats[stat.key] ?? 0) - (a.stats[stat.key] ?? 0))
               .slice(0, 5)
             const top = leaders[0]?.stats[stat.key] ?? 0
 
@@ -209,7 +213,7 @@ export default async function DashboardPage() {
                           className="absolute inset-y-0 left-0 bg-accent/10"
                           style={{
                             width: top
-                              ? `${Math.max(6, (t.stats[stat.key] / top) * 100)}%`
+                              ? `${Math.max(6, ((t.stats[stat.key] ?? 0) / top) * 100)}%`
                               : 0,
                           }}
                         />
@@ -225,7 +229,7 @@ export default async function DashboardPage() {
                           )}
                         </span>
                         <span className="relative font-bold tabular-nums text-accent-text">
-                          {t.stats[stat.key]}
+                          {t.stats[stat.key] ?? 0}
                         </span>
                       </Link>
                     ))}

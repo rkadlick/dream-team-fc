@@ -1,5 +1,5 @@
 /**
- * Hand-written to match supabase/migrations/0001_init.sql.
+ * Hand-written to match the migrations in supabase/migrations/.
  *
  * Regenerate after any migration with:
  *   supabase gen types typescript --project-id <your-project-ref> --schema public > lib/database.types.ts
@@ -123,6 +123,14 @@ export type Database = {
           created_by: string | null
           created_at: string
           updated_at: string
+          shots_us: number | null
+          shots_them: number | null
+          tackles_us: number | null
+          tackles_them: number | null
+          possession_us: number | null
+          possession_them: number | null
+          pass_accuracy_us: number | null
+          pass_accuracy_them: number | null
         }
         Insert: {
           id?: string
@@ -144,6 +152,14 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          shots_us?: number | null
+          shots_them?: number | null
+          tackles_us?: number | null
+          tackles_them?: number | null
+          possession_us?: number | null
+          possession_them?: number | null
+          pass_accuracy_us?: number | null
+          pass_accuracy_them?: number | null
         }
         Update: {
           id?: string
@@ -165,6 +181,14 @@ export type Database = {
           created_by?: string | null
           created_at?: string
           updated_at?: string
+          shots_us?: number | null
+          shots_them?: number | null
+          tackles_us?: number | null
+          tackles_them?: number | null
+          possession_us?: number | null
+          possession_them?: number | null
+          pass_accuracy_us?: number | null
+          pass_accuracy_them?: number | null
         }
         Relationships: [
           {
@@ -189,6 +213,13 @@ export type Database = {
           goals: number
           assists: number
           created_at: string
+          shots: number | null
+          shots_on_target: number | null
+          tackles: number | null
+          saves: number | null
+          yellow_cards: number | null
+          red_cards: number | null
+          potg_rank: number | null
         }
         Insert: {
           id?: string
@@ -197,6 +228,13 @@ export type Database = {
           goals?: number
           assists?: number
           created_at?: string
+          shots?: number | null
+          shots_on_target?: number | null
+          tackles?: number | null
+          saves?: number | null
+          yellow_cards?: number | null
+          red_cards?: number | null
+          potg_rank?: number | null
         }
         Update: {
           id?: string
@@ -205,6 +243,13 @@ export type Database = {
           goals?: number
           assists?: number
           created_at?: string
+          shots?: number | null
+          shots_on_target?: number | null
+          tackles?: number | null
+          saves?: number | null
+          yellow_cards?: number | null
+          red_cards?: number | null
+          potg_rank?: number | null
         }
         Relationships: [
           {

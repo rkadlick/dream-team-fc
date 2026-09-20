@@ -6,51 +6,74 @@ import type { Tables } from '@/lib/database.types'
 export type Season = Tables<'seasons'>
 export type GameType = Tables<'game_types'>
 
+/**
+ * Kept as a string literal, not built from MATCH_STATS: supabase-js parses this
+ * at the type level, so a column missing here becomes a compile error against
+ * MatchRow rather than a runtime surprise.
+ */
 const MATCH_COLUMNS =
-  'id, season_id, game_type_id, played_on, division, opponent, home_away, score_us, score_them, opp_own_goals, went_to_overtime, went_to_pks, pk_us, pk_them, result, notes'
+  'id, season_id, game_type_id, played_on, division, opponent, home_away, score_us, score_them, opp_own_goals, went_to_overtime, went_to_pks, pk_us, pk_them, result, notes, shots_us, shots_them, tackles_us, tackles_them, possession_us, possession_them, pass_accuracy_us, pass_accuracy_them'
 
 const PLAYER_COLUMNS =
   'id, name, jersey_number, position, is_human, gamertag, user_id, is_active'
 
 /** Stat columns come from the config, so a new stat needs no query changes. */
-const STAT_COLUMNS = ['match_id', 'player_id', ...STAT_KEYS].join(', ')
+const STAT_COLUMNS = ['match_id', 'player_id', 'potg_rank', ...STAT_KEYS].join(
+  ', '
+)
+
+/**
+ * Supabase returns { data, error } and never throws. Dropping `error` on the
+ * floor turns a schema mismatch — a missing column after a migration has not
+ * been applied — into an empty page rather than a visible failure, so every
+ * query surfaces it instead.
+ */
+function unwrap<T>(
+  result: { data: T | null; error: { message: string } | null },
+  what: string
+): T | null {
+  if (result.error) {
+    throw new Error(`Failed to load ${what}: ${result.error.message}`)
+  }
+  return result.data
+}
 
 export async function getSeasons(): Promise<Season[]> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const result = await supabase
     .from('seasons')
     .select('*')
     .order('start_date', { ascending: false })
-  return data ?? []
+  return unwrap(result, 'seasons') ?? []
 }
 
 export async function getCurrentSeason(): Promise<Season | null> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const result = await supabase
     .from('seasons')
     .select('*')
     .eq('is_current', true)
     .maybeSingle()
-  return data ?? null
+  return unwrap(result, 'the current season') ?? null
 }
 
 export async function getGameTypes(): Promise<GameType[]> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const result = await supabase
     .from('game_types')
     .select('*')
     .order('name')
-  return data ?? []
+  return unwrap(result, 'game types') ?? []
 }
 
 export async function getPlayers(): Promise<(PlayerRow & { user_id: string | null })[]> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const result = await supabase
     .from('players')
     .select(PLAYER_COLUMNS)
     .order('is_active', { ascending: false })
     .order('name')
-  return data ?? []
+  return unwrap(result, 'players') ?? []
 }
 
 export async function getMatches(seasonId?: string): Promise<MatchRow[]> {
@@ -60,18 +83,17 @@ export async function getMatches(seasonId?: string): Promise<MatchRow[]> {
     .select(MATCH_COLUMNS)
     .order('played_on', { ascending: false })
   if (seasonId) query = query.eq('season_id', seasonId)
-  const { data } = await query
-  return data ?? []
+  return unwrap(await query, 'matches') ?? []
 }
 
 export async function getMatch(id: string): Promise<MatchRow | null> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const result = await supabase
     .from('matches')
     .select(MATCH_COLUMNS)
     .eq('id', id)
     .maybeSingle()
-  return data ?? null
+  return unwrap(result, 'the match') ?? null
 }
 
 export async function getStatRows(matchIds?: string[]): Promise<StatRow[]> {
@@ -79,20 +101,19 @@ export async function getStatRows(matchIds?: string[]): Promise<StatRow[]> {
   if (matchIds && matchIds.length === 0) return []
   let query = supabase.from('match_player_stats').select(STAT_COLUMNS)
   if (matchIds) query = query.in('match_id', matchIds)
-  const { data } = await query
-  return (data ?? []) as unknown as StatRow[]
+  return (unwrap(await query, 'player stats') ?? []) as unknown as StatRow[]
 }
 
 /** Distinct opponents, newest first, for the entry form's autocomplete. */
 export async function getOpponents(): Promise<string[]> {
   const supabase = await createClient()
-  const { data } = await supabase
+  const result = await supabase
     .from('matches')
     .select('opponent, played_on')
     .order('played_on', { ascending: false })
     .limit(500)
   const seen = new Set<string>()
-  for (const row of data ?? []) {
+  for (const row of unwrap(result, 'opponents') ?? []) {
     if (row.opponent) seen.add(row.opponent)
   }
   return [...seen]
@@ -107,6 +128,5 @@ export async function getLatestDivision(seasonId?: string): Promise<number | nul
     .order('played_on', { ascending: false })
     .limit(1)
   if (seasonId) query = query.eq('season_id', seasonId)
-  const { data } = await query
-  return data?.[0]?.division ?? null
+  return unwrap(await query, 'the latest division')?.[0]?.division ?? null
 }

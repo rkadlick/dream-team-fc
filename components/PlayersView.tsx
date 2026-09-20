@@ -70,8 +70,10 @@ export function PlayersView({
       )}
 
       <p className="mt-3 text-xs text-faint">
-        Games played and per-game averages are tracked for human players only;
-        AI teammates show “—”.
+        Games played counts every match a player was listed in, AI teammates
+        included. AI appearances were only recorded from the point that tracking
+        began, so their earlier games are not counted. A “—” means the stat was
+        never recorded, which is not the same as zero.
       </p>
 
       {isAdmin && (

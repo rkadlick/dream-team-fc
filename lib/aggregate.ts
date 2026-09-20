@@ -1,4 +1,9 @@
-import { STATS, type StatValues, emptyStats, pickStats } from '@/lib/stats-config'
+import {
+  STATS,
+  type StatValues,
+  emptyStats,
+  pickStats,
+} from '@/lib/stats-config'
 
 export type PlayerRow = {
   id: string
@@ -27,6 +32,16 @@ export type MatchRow = {
   pk_them: number | null
   result: string
   notes: string | null
+  // Team stats, recorded for both sides. All optional: null is "not tracked".
+  // Kept in step with MATCH_STATS in lib/stats-config.ts.
+  shots_us: number | null
+  shots_them: number | null
+  tackles_us: number | null
+  tackles_them: number | null
+  possession_us: number | null
+  possession_them: number | null
+  pass_accuracy_us: number | null
+  pass_accuracy_them: number | null
 }
 
 export type StatRow = {
@@ -34,11 +49,55 @@ export type StatRow = {
   player_id: string
 } & Record<string, unknown>
 
-export type PlayerTotals = {
-  player: PlayerRow
+/** An accumulator for one player's stats over some set of matches. */
+export type StatBucket = {
+  /** null for an optional stat that was never recorded in this set. */
   stats: StatValues
-  /** Human players only; null for AI, which is rendered as "-". */
-  gamesPlayed: number | null
+  /**
+   * Per stat, the number of matches in which it was actually recorded. This is
+   * the denominator for per-game averages: a match where shots were not tracked
+   * must not drag a player's shots-per-game down.
+   */
+  statGames: Record<string, number>
+  /** Matches with a stat row. Every player who appeared gets one. */
+  games: number
+  /** Times named player of the match. */
+  potgAwards: number
+}
+
+export function emptyBucket(): StatBucket {
+  return {
+    stats: emptyStats(),
+    statGames: Object.fromEntries(STATS.map((s) => [s.key, 0])),
+    games: 0,
+    potgAwards: 0,
+  }
+}
+
+/** Fold one match_player_stats row into a bucket. */
+export function addRow(bucket: StatBucket, row: StatRow): void {
+  // A stat row exists for every player who appeared, human or AI, even at zero,
+  // so counting rows is the games-played count.
+  bucket.games += 1
+  if (row.potg_rank !== null && row.potg_rank !== undefined) {
+    bucket.potgAwards += 1
+  }
+
+  const values = pickStats(row)
+  for (const stat of STATS) {
+    const value = values[stat.key]
+    // null is "not tracked in this match": it neither adds to the total nor
+    // counts toward the average's denominator.
+    if (value === null) continue
+    bucket.stats[stat.key] = (bucket.stats[stat.key] ?? 0) + value
+    bucket.statGames[stat.key] += 1
+  }
+}
+
+export type PlayerTotals = StatBucket & {
+  player: PlayerRow
+  /** Alias of `games`, kept for the leaderboard's vocabulary. */
+  gamesPlayed: number
 }
 
 /**
@@ -49,29 +108,19 @@ export function totalsByPlayer(
   players: PlayerRow[],
   statRows: StatRow[]
 ): PlayerTotals[] {
-  const byId = new Map<string, PlayerTotals>()
-  for (const player of players) {
-    byId.set(player.id, {
-      player,
-      stats: emptyStats(),
-      gamesPlayed: player.is_human ? 0 : null,
-    })
-  }
+  const byId = new Map<string, StatBucket>()
+  for (const player of players) byId.set(player.id, emptyBucket())
 
   for (const row of statRows) {
-    const entry = byId.get(row.player_id)
-    if (!entry) continue
-    const values = pickStats(row)
-    for (const stat of STATS) {
-      entry.stats[stat.key] += values[stat.key] ?? 0
-    }
-    // A stat row exists for every human who played, even at zero, so counting
-    // rows is the games-played count. AI players only appear when they scored
-    // or assisted, so the count would be meaningless for them.
-    if (entry.gamesPlayed !== null) entry.gamesPlayed += 1
+    const bucket = byId.get(row.player_id)
+    if (!bucket) continue
+    addRow(bucket, row)
   }
 
-  return [...byId.values()]
+  return players.map((player) => {
+    const bucket = byId.get(player.id)!
+    return { player, ...bucket, gamesPlayed: bucket.games }
+  })
 }
 
 export function sumStat(stats: StatValues, keys: string[]): number {

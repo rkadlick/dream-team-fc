@@ -102,32 +102,64 @@ the Site URL to the custom domain.
 
 ## Adding a new tracked stat
 
-Shots, yellow cards, saves and so on. Two steps:
+Three steps. The third one is the easy one to forget, and forgetting it used to
+fail silently.
 
-1. **One migration.** Add a column with a `not null default 0`:
+1. **One migration.** Add a nullable column — `null` means "not tracked for this
+   match", which is not the same as `0`:
 
    ```sql
-   -- supabase/migrations/0002_add_shots.sql
+   -- supabase/migrations/0003_add_interceptions.sql
    alter table match_player_stats
-     add column shots int not null default 0 check (shots >= 0);
+     add column interceptions int check (interceptions >= 0);
    ```
 
-   Run it (`supabase db push` or the SQL editor).
+2. **In the same migration, `create or replace public.save_match`.** That
+   function lists every stat column explicitly, in both its `insert` column list
+   and its `jsonb_to_recordset` signature. A column added to the table but not
+   to the function is accepted by the form, sent by the action, and then
+   **dropped by the RPC**, which writes the default instead. To make that
+   impossible to miss, `save_match` also rejects any payload key it does not
+   recognise, so an app that runs ahead of the database raises instead of
+   quietly losing data.
 
-2. **One config entry** in `lib/stats-config.ts`:
+3. **One config entry** in `lib/stats-config.ts`, plus the column in
+   `lib/database.types.ts` (hand-written — regenerate it or add the field):
 
    ```ts
    export const STATS: StatConfig[] = [
-     { key: 'goals', label: 'Goals', shortLabel: 'G' },
-     { key: 'assists', label: 'Assists', shortLabel: 'A' },
-     { key: 'shots', label: 'Shots', shortLabel: 'SH' },
+     // ...
+     { key: 'interceptions', label: 'Interceptions', shortLabel: 'INT',
+       optional: true, inTable: true },
    ]
    ```
 
+   The flags control where it appears: `inTable` gives it a leaderboard column,
+   `perGame` a per-game average column, `leaderboard` a "Top ..." panel on the
+   dashboard, `combined` folds it into the G+A figure, `gkOnly` hides it for
+   outfield players, and `primary` shows it on the match form without expanding
+   "More stats". Without any flags it is stored and shown on the player and
+   match detail pages only.
+
+**Apply the migration before deploying the code.** The two directions are not
+symmetric: a database ahead of the app is harmless, but an app ahead of the
+database makes every query fail (`lib/queries.ts` raises on the PostgREST
+error rather than returning an empty list, which would render as a site with no
+data in it).
+
 The match entry form, the match detail table, the leaderboard and the player
 pages all render from that array, and the queries select their stat columns
-from it, so nothing else changes. Aggregation happens in TypeScript
-(`lib/aggregate.ts`) — there are deliberately no SQL views to keep in sync.
+from it. Aggregation happens in TypeScript (`lib/aggregate.ts`) — there are
+deliberately no SQL views to keep in sync.
+
+### Team stats
+
+Per-match team stats live in `MATCH_STATS` in the same file and are stored as a
+`<key>_us` / `<key>_them` pair of nullable columns on `matches`. They are shown
+on the match detail page only. `MATCH_COLUMNS` in `lib/queries.ts` is a string
+literal rather than being built from the config, because supabase-js parses it
+at the type level — a column missing from it is a compile error against
+`MatchRow`.
 
 Then refresh the types (step below) so `lib/database.types.ts` knows about the
 new column.
@@ -201,10 +233,38 @@ caller's RLS applies. Deleting a match is a plain delete; the stats cascade.
 
 ### The saving rule for stats
 
-A row is always written for every **human** player who played, even at 0 goals
-and 0 assists — that is how games played is counted. AI teammates only get a
-row when they actually scored or assisted, so games played and per-game
-averages show "—" for them.
+A row is written for every player who **appeared**, human and AI alike, even at
+0 goals and 0 assists — that is how games played is counted. The match form
+pre-lists the whole active roster; anyone who did not feature is removed from
+the list before saving.
+
+AI appearances were only recorded from the point that tracking began, so for
+matches entered before then an AI teammate's games-played figure counts only the
+games in which they scored or assisted, and is lower than the truth.
+
+### Tracked, untracked and zero
+
+Only goals and assists are `not null default 0`. Every other stat is nullable
+and optional:
+
+| value  | meaning        | shown as |
+| ------ | -------------- | -------- |
+| `null` | not tracked    | `—`      |
+| `0`    | tracked, zero  | `0`      |
+
+Totals skip nulls, and each stat carries its own denominator — the number of
+matches in which it was actually recorded — so a match where shots were not
+tracked does not drag a player's shots-per-game down. That denominator is
+`statGames` on `StatBucket` in `lib/aggregate.ts`.
+
+### Player of the match
+
+1–3 players per match, stored as `potg_rank` (1–3) on `match_player_stats`
+rather than in a separate table: the row already exists per player per match,
+`save_match` replaces those rows atomically so ranks cannot collide mid-save,
+and it needs no new RLS policies. A partial unique index on
+`(match_id, potg_rank)` keeps the slots distinct. The rank is only a slot, not a
+placing.
 
 ### Dates
 
