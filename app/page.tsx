@@ -7,14 +7,19 @@ import {
   ResultBadge,
   SectionTitle,
 } from '@/components/ui'
+import { TeamPhotoBanner } from '@/components/TeamPhotoBanner'
 import { formatDateShort, formatScore } from '@/lib/format'
 import { sortMatchesDesc, teamRecord, totalsByPlayer } from '@/lib/aggregate'
 import { LEADERBOARD_STATS, statApplies } from '@/lib/stats-config'
+import { VIDEO_KIND_LABELS, type VideoKind } from '@/lib/constants'
+import { parseYoutubeId, youtubeThumbnailUrl } from '@/lib/youtube'
 import { getViewer } from '@/lib/auth'
+import { getTeamPhotos } from '@/lib/team-photos'
 import {
   getCurrentSeason,
   getMatches,
   getPlayers,
+  getRecentVideos,
   getStatRows,
 } from '@/lib/queries'
 
@@ -47,10 +52,12 @@ function BigFigure({
 
 export default async function DashboardPage() {
   const [season, viewer] = await Promise.all([getCurrentSeason(), getViewer()])
+  const teamPhotos = await getTeamPhotos()
 
   if (!season) {
     return (
       <>
+        <TeamPhotoBanner photos={teamPhotos} />
         <h1 className="mb-6 text-2xl font-bold tracking-tight sm:text-3xl">
           Dashboard
         </h1>
@@ -69,7 +76,10 @@ export default async function DashboardPage() {
     getPlayers(),
   ])
   const sorted = sortMatchesDesc(matches)
-  const statRows = await getStatRows(sorted.map((m) => m.id))
+  const [statRows, recentVideos] = await Promise.all([
+    getStatRows(sorted.map((m) => m.id)),
+    getRecentVideos(4),
+  ])
 
   const record = teamRecord(sorted)
   const division = sorted[0]?.division ?? null
@@ -79,6 +89,8 @@ export default async function DashboardPage() {
 
   return (
     <>
+      <TeamPhotoBanner photos={teamPhotos} />
+
       {/* One composed header instead of a row of identical stat tiles. */}
       <Panel tone="accent" className="mb-8 overflow-hidden">
         <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-4 px-5 py-5 sm:px-6">
@@ -240,6 +252,52 @@ export default async function DashboardPage() {
           })}
         </div>
       </div>
+
+      {recentVideos.length > 0 && (
+        <section className="mt-8">
+          <SectionTitle>Recent highlights</SectionTitle>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {recentVideos.map((video) => {
+              const id = parseYoutubeId(video.url)
+              return (
+                <Link
+                  key={video.id}
+                  href={`/matches/${video.match.id}`}
+                  className="group block overflow-hidden rounded-2xl border border-line bg-surface shadow-card transition-[border-color,box-shadow] hover:border-accent-line hover:shadow-lift"
+                >
+                  <div className="relative aspect-video w-full overflow-hidden bg-surface-2">
+                    {id && (
+                      // Plain img: a fixed-format thumbnail from YouTube's CDN,
+                      // not worth routing through next/image's remote config.
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={youtubeThumbnailUrl(id)}
+                        alt=""
+                        className="h-full w-full object-cover transition-transform group-hover:scale-105"
+                      />
+                    )}
+                    <span
+                      aria-hidden
+                      className="absolute inset-0 flex items-center justify-center text-2xl text-white/90 drop-shadow"
+                    >
+                      ▶
+                    </span>
+                  </div>
+                  <div className="px-3 py-2">
+                    <div className="truncate text-xs font-semibold">
+                      {video.match.opponent}
+                    </div>
+                    <div className="text-[10px] text-faint">
+                      {formatDateShort(video.match.played_on)} ·{' '}
+                      {VIDEO_KIND_LABELS[video.kind as VideoKind]}
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
+      )}
     </>
   )
 }

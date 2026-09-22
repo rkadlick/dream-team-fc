@@ -278,6 +278,64 @@ export type Database = {
         Update: { user_id?: string }
         Relationships: []
       }
+      match_videos: {
+        Row: {
+          id: string
+          match_id: string
+          url: string
+          title: string | null
+          kind: string
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          match_id: string
+          url: string
+          title?: string | null
+          kind?: string
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          match_id?: string
+          url?: string
+          title?: string | null
+          kind?: string
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'match_videos_match_id_fkey'
+            columns: ['match_id']
+            referencedRelation: 'matches'
+            referencedColumns: ['id']
+          },
+        ]
+      }
+      team_photos: {
+        Row: {
+          id: string
+          storage_path: string
+          created_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          storage_path: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          storage_path?: string
+          created_by?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: Record<never, never>
     Functions: {

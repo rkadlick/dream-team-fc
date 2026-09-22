@@ -10,12 +10,14 @@ import {
   ResultBadge,
   SectionTitle,
 } from '@/components/ui'
+import { MatchVideos } from '@/components/MatchVideos'
 import { formatDate, formatMatchStat, formatPlayerLabel, formatStat } from '@/lib/format'
 import { MATCH_STATS, STATS, pickStats, statApplies } from '@/lib/stats-config'
 import { getViewer } from '@/lib/auth'
 import {
   getGameTypes,
   getMatch,
+  getMatchVideos,
   getPlayers,
   getSeasons,
   getStatRows,
@@ -39,12 +41,13 @@ export default async function MatchDetailPage(props: {
   const match = await getMatch(id)
   if (!match) notFound()
 
-  const [seasons, gameTypes, players, statRows, viewer] = await Promise.all([
+  const [seasons, gameTypes, players, statRows, viewer, videos] = await Promise.all([
     getSeasons(),
     getGameTypes(),
     getPlayers(),
     getStatRows([match.id]),
     getViewer(),
+    getMatchVideos(match.id),
   ])
 
   const season = seasons.find((s) => s.id === match.season_id)
@@ -156,6 +159,12 @@ export default async function MatchDetailPage(props: {
           <Pill>{season?.name ?? 'Season'}</Pill>
         </div>
       </Panel>
+
+      {(videos.length > 0 || viewer.isAdmin) && (
+        <div className="mb-8">
+          <MatchVideos matchId={match.id} videos={videos} isAdmin={viewer.isAdmin} />
+        </div>
+      )}
 
       <div className="grid gap-8 lg:grid-cols-12">
         <section className="lg:col-span-7">

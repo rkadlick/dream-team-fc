@@ -23,6 +23,7 @@ const ADMIN_LINKS = [
   { href: '/admin/matches/new', label: 'Add match', glyph: '＋' },
   { href: '/admin/seasons', label: 'Seasons', glyph: '◷' },
   { href: '/admin/game-types', label: 'Game types', glyph: '⚑' },
+  { href: '/admin/team-photos', label: 'Team photos', glyph: '▦' },
 ]
 
 function isActive(pathname: string, href: string) {

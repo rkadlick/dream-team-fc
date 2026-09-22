@@ -9,3 +9,11 @@ export type Result = (typeof RESULTS)[number]
 
 export const HOME_AWAY = ['home', 'away'] as const
 export type HomeAway = (typeof HOME_AWAY)[number]
+
+export const VIDEO_KINDS = ['highlight', 'full_match'] as const
+export type VideoKind = (typeof VIDEO_KINDS)[number]
+
+export const VIDEO_KIND_LABELS: Record<VideoKind, string> = {
+  highlight: 'Highlight',
+  full_match: 'Full match',
+}
