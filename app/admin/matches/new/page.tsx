@@ -3,7 +3,6 @@ import { MatchForm } from '@/components/MatchForm'
 import {
   getCurrentSeason,
   getGameTypes,
-  getLatestDivision,
   getOpponents,
   getPlayers,
   getSeasons,
@@ -31,7 +30,6 @@ export default async function NewMatchPage() {
   }
 
   const seasonId = currentSeason?.id ?? seasons[0].id
-  const division = (await getLatestDivision()) ?? 1
 
   return (
     <>
@@ -43,7 +41,7 @@ export default async function NewMatchPage() {
           .map((g) => ({ id: g.id, name: g.name }))}
         players={players.filter((p) => p.is_active)}
         opponents={opponents}
-        defaults={{ seasonId, division }}
+        defaults={{ seasonId }}
       />
     </>
   )

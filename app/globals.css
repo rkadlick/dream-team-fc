@@ -30,6 +30,12 @@
   --dt-accent-soft: #ede9fe;
   --dt-accent-line: #c4b5fd;
 
+  /* Opponent color: the complement of the accent hue (263°), tuned for
+     WCAG AA text contrast rather than sharing the accent's raw HSL. */
+  --dt-rival-text: #568112;
+  --dt-rival-soft: #f3fde3;
+  --dt-rival-line: #d4f0a8;
+
   --dt-win: #047857;
   --dt-win-soft: #d1fae5;
   --dt-draw: #52525b;
@@ -65,6 +71,10 @@
     --dt-accent-text: #c4b5fd;
     --dt-accent-soft: #241a45;
     --dt-accent-line: #4c2f9c;
+
+    --dt-rival-text: #77a824;
+    --dt-rival-soft: #2e3b16;
+    --dt-rival-line: #6e9130;
 
     --dt-win: #6ee7b7;
     --dt-win-soft: #06301f;
@@ -102,6 +112,10 @@
   --dt-accent-soft: #241a45;
   --dt-accent-line: #4c2f9c;
 
+  --dt-rival-text: #77a824;
+  --dt-rival-soft: #2e3b16;
+  --dt-rival-line: #6e9130;
+
   --dt-win: #6ee7b7;
   --dt-win-soft: #06301f;
   --dt-draw: #c3c3d1;
@@ -136,6 +150,10 @@
   --color-accent-text: var(--dt-accent-text);
   --color-accent-soft: var(--dt-accent-soft);
   --color-accent-line: var(--dt-accent-line);
+
+  --color-rival-text: var(--dt-rival-text);
+  --color-rival-soft: var(--dt-rival-soft);
+  --color-rival-line: var(--dt-rival-line);
 
   --color-win: var(--dt-win);
   --color-win-soft: var(--dt-win-soft);

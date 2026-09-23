@@ -155,7 +155,7 @@ export default async function MatchDetailPage(props: {
                 : 'not recorded'}
             </Pill>
           )}
-          <Pill>Division {match.division}</Pill>
+          <Pill tone="accent">D{match.division}</Pill>
           <Pill>{season?.name ?? 'Season'}</Pill>
         </div>
       </Panel>

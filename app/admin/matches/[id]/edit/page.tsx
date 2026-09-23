@@ -42,7 +42,7 @@ export default async function EditMatchPage(props: {
           .map((g) => ({ id: g.id, name: g.name }))}
         players={players.filter((p) => p.is_active || rosterIds.has(p.id))}
         opponents={opponents}
-        defaults={{ seasonId: match.season_id, division: match.division }}
+        defaults={{ seasonId: match.season_id }}
         initial={{
           ...match,
           matchStats: pickMatchStats(match as unknown as Record<string, unknown>),

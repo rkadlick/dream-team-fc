@@ -120,18 +120,6 @@ export async function getOpponents(): Promise<string[]> {
   return [...seen]
 }
 
-/** The division of the most recent match overall, used as a form default. */
-export async function getLatestDivision(seasonId?: string): Promise<number | null> {
-  const supabase = await createClient()
-  let query = supabase
-    .from('matches')
-    .select('division, played_on')
-    .order('played_on', { ascending: false })
-    .limit(1)
-  if (seasonId) query = query.eq('season_id', seasonId)
-  return unwrap(await query, 'the latest division')?.[0]?.division ?? null
-}
-
 export type MatchVideo = Tables<'match_videos'>
 export type RecentVideo = MatchVideo & {
   match: Pick<MatchRow, 'id' | 'opponent' | 'played_on'>

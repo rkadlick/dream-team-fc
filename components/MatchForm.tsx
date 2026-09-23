@@ -2,14 +2,8 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { Panel, Label, buttonStyles, fieldStyles } from '@/components/ui'
-import {
-  MATCH_STATS,
-  MAX_POTG,
-  STATS,
-  emptyStats,
-  statApplies,
-} from '@/lib/stats-config'
+import { Panel, Label, buttonStyles, fieldBase, fieldStyles } from '@/components/ui'
+import { MATCH_STATS, MAX_POTG, STATS, statApplies } from '@/lib/stats-config'
 import { formatPlayerLabel, todayIso } from '@/lib/format'
 import { RESULTS, type Result } from '@/lib/constants'
 import {
@@ -102,9 +96,19 @@ function toInputs(
   )
 }
 
+/**
+ * A freshly added line starts fully zeroed rather than blank, since 0 is by
+ * far the most common value and typing over a 0 beats typing into a dash.
+ * GK-only stats (saves) stay blank so they keep defaulting to hidden for
+ * outfielders — see `statApplies`.
+ */
 function blankInputs(): StatInputs {
-  return toInputs(emptyStats() as Record<string, number | null>)
+  return Object.fromEntries(
+    STATS.map((stat) => [stat.key, stat.gkOnly ? '' : '0'])
+  )
 }
+
+const DIVISIONS = [1, 2, 3, 4, 5]
 
 export function MatchForm({
   seasons,
@@ -118,7 +122,7 @@ export function MatchForm({
   gameTypes: Option[]
   players: FormPlayer[]
   opponents: string[]
-  defaults: { seasonId: string; division: number; playedOn?: string }
+  defaults: { seasonId: string; playedOn?: string }
   initial?: MatchFormInitial
 }) {
   const router = useRouter()
@@ -133,9 +137,7 @@ export function MatchForm({
     initial?.played_on ?? defaults.playedOn ?? todayIso()
   )
   const [seasonId, setSeasonId] = useState(initial?.season_id ?? defaults.seasonId)
-  const [division, setDivision] = useState(
-    String(initial?.division ?? defaults.division)
-  )
+  const [division, setDivision] = useState<number | null>(initial?.division ?? null)
   const [gameTypeId, setGameTypeId] = useState(
     initial?.game_type_id ?? gameTypes[0]?.id ?? ''
   )
@@ -155,6 +157,7 @@ export function MatchForm({
       : ''
   )
   const [notes, setNotes] = useState(initial?.notes ?? '')
+  const [notesOpen, setNotesOpen] = useState(false)
   const [allowUnattributed, setAllowUnattributed] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
 
@@ -294,20 +297,19 @@ export function MatchForm({
   }
 
   /**
-   * Fills this player's blank boxes with 0; anything already typed is kept.
-   * Stats that do not apply (saves for an outfielder) stay blank, otherwise
-   * the 0 would make the hidden box appear.
+   * Clears this player's 0s back to blank ("not tracked"). Goals and assists
+   * are skipped: they are `not null default 0` in the database, so a blank
+   * there would be meaningless.
    */
-  const zeroBlanks = (playerId: string) => {
-    const position = playerById.get(playerId)?.position ?? null
+  const setZerosBlank = (playerId: string) => {
     setLines((prev) =>
       prev.map((l) => {
         if (l.playerId !== playerId) return l
         const stats = { ...l.stats }
         for (const stat of STATS) {
-          if ((stats[stat.key] ?? '').trim() !== '') continue
-          if (!statApplies(stat, position, null)) continue
-          stats[stat.key] = '0'
+          if (!stat.optional) continue
+          if ((stats[stat.key] ?? '').trim() !== '0') continue
+          stats[stat.key] = ''
         }
         return { ...l, stats }
       })
@@ -342,6 +344,10 @@ export function MatchForm({
 
   const submit = () => {
     setError(null)
+    if (division === null) {
+      setError('Pick a division.')
+      return
+    }
     if (goalsMismatch && !allowUnattributed) {
       setError('Goals do not add up. Fix them, or tick “Save anyway”.')
       return
@@ -352,7 +358,7 @@ export function MatchForm({
       season_id: seasonId,
       game_type_id: gameTypeId,
       played_on: playedOn,
-      division: num(division, 1) || 1,
+      division,
       opponent,
       home_away: homeAway,
       score_us: num(scoreUs),
@@ -400,38 +406,50 @@ export function MatchForm({
   }
 
   const toggleStyles = (active: boolean) =>
-    `min-h-12 flex-1 rounded-xl border text-sm font-semibold transition-colors ${
+    `h-10 flex-1 rounded-lg border text-sm font-semibold transition-colors ${
       active
         ? 'border-accent bg-accent-soft text-accent-text'
         : 'border-line bg-surface-2 text-muted'
     }`
 
+  const divisionStyles = (active: boolean) =>
+    `flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border text-sm font-semibold transition-colors ${
+      active
+        ? 'border-accent bg-accent-soft text-accent-text'
+        : 'border-line bg-surface-2 text-muted'
+    }`
+
+  const opponentLabel = opponent.trim() || 'Them'
+
   return (
     <div className="space-y-6 pb-24">
       {/* 1. When and what */}
       <Panel className="space-y-4 p-4">
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <Label htmlFor="played_on">Date</Label>
-            <input
-              id="played_on"
-              type="date"
-              value={playedOn}
-              onChange={(e) => setPlayedOn(e.target.value)}
-              className={fieldStyles}
-            />
-          </div>
-          <div>
-            <Label htmlFor="division">Division</Label>
-            <input
-              id="division"
-              type="number"
-              inputMode="numeric"
-              min={1}
-              value={division}
-              onChange={(e) => setDivision(e.target.value)}
-              className={fieldStyles}
-            />
+        <div>
+          <Label htmlFor="played_on">Date</Label>
+          <input
+            id="played_on"
+            type="date"
+            value={playedOn}
+            onChange={(e) => setPlayedOn(e.target.value)}
+            className={fieldStyles}
+          />
+        </div>
+
+        <div>
+          <Label>Division</Label>
+          <div className="flex gap-2">
+            {DIVISIONS.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setDivision(d)}
+                aria-pressed={division === d}
+                className={divisionStyles(division === d)}
+              >
+                {d}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -506,8 +524,8 @@ export function MatchForm({
         </div>
       </Panel>
 
-      {/* 2. Opponent */}
-      <Panel className="space-y-4 p-4">
+      {/* 2. Opponent & score */}
+      <Panel className="space-y-3 p-4">
         <div>
           <Label htmlFor="opponent">Opponent</Label>
           <input
@@ -525,32 +543,31 @@ export function MatchForm({
           </datalist>
         </div>
 
-        <div>
-          <Label>Home or away</Label>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setHomeAway('home')}
-              className={toggleStyles(homeAway === 'home')}
-            >
-              Home
-            </button>
-            <button
-              type="button"
-              onClick={() => setHomeAway('away')}
-              className={toggleStyles(homeAway === 'away')}
-            >
-              Away
-            </button>
-          </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setHomeAway('home')}
+            className={toggleStyles(homeAway === 'home')}
+          >
+            Home
+          </button>
+          <button
+            type="button"
+            onClick={() => setHomeAway('away')}
+            className={toggleStyles(homeAway === 'away')}
+          >
+            Away
+          </button>
         </div>
-      </Panel>
 
-      {/* 3. Score */}
-      <Panel className="space-y-4 p-4">
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <Label htmlFor="score_us">Us</Label>
+            <label
+              htmlFor="score_us"
+              className="mb-1 block truncate text-[11px] font-semibold uppercase tracking-wider text-accent-text"
+            >
+              Dream Team
+            </label>
             <input
               id="score_us"
               type="number"
@@ -558,11 +575,17 @@ export function MatchForm({
               min={0}
               value={scoreUs}
               onChange={(e) => setScoreUs(e.target.value)}
-              className={`${fieldStyles} h-14 text-center text-2xl font-bold`}
+              className={`${fieldStyles} h-11 text-center text-lg font-bold`}
             />
           </div>
           <div>
-            <Label htmlFor="score_them">Them</Label>
+            <label
+              htmlFor="score_them"
+              className="mb-1 block truncate text-[11px] font-semibold uppercase tracking-wider text-rival-text"
+              title={opponentLabel}
+            >
+              {opponentLabel}
+            </label>
             <input
               id="score_them"
               type="number"
@@ -570,13 +593,18 @@ export function MatchForm({
               min={0}
               value={scoreThem}
               onChange={(e) => setScoreThem(e.target.value)}
-              className={`${fieldStyles} h-14 text-center text-2xl font-bold`}
+              className={`${fieldStyles} h-11 text-center text-lg font-bold`}
             />
           </div>
         </div>
 
-        <div>
-          <Label htmlFor="own_goals">Opponent own goals (already in our score)</Label>
+        <div className="flex items-center justify-between gap-3">
+          <label htmlFor="own_goals" className="text-xs text-faint">
+            Opponent own goals
+            <span className="block text-[10px] text-faint/80">
+              (already in our score)
+            </span>
+          </label>
           <input
             id="own_goals"
             type="number"
@@ -584,7 +612,7 @@ export function MatchForm({
             min={0}
             value={oppOwnGoals}
             onChange={(e) => setOppOwnGoals(e.target.value)}
-            className={fieldStyles}
+            className={`${fieldBase} h-9 w-16 shrink-0 text-center`}
           />
         </div>
 
@@ -624,7 +652,7 @@ export function MatchForm({
                 min={0}
                 value={pkUs}
                 onChange={(e) => setPkUs(e.target.value)}
-                className={fieldStyles}
+                className={`${fieldStyles} h-9`}
               />
             </div>
             <div>
@@ -636,50 +664,37 @@ export function MatchForm({
                 min={0}
                 value={pkThem}
                 onChange={(e) => setPkThem(e.target.value)}
-                className={fieldStyles}
+                className={`${fieldStyles} h-9`}
               />
             </div>
           </div>
         )}
-      </Panel>
 
-      {/* 4. Result */}
-      <Panel className="p-4">
-        <Label>Result</Label>
-        <div className="flex gap-2">
-          {RESULTS.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => {
-                setResultTouched(true)
-                setResult(r)
-              }}
-              className={toggleStyles(effectiveResult === r)}
-            >
-              {r}
-            </button>
-          ))}
+        <div>
+          <Label>Result</Label>
+          <div className="flex gap-2">
+            {RESULTS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => {
+                  setResultTouched(true)
+                  setResult(r)
+                }}
+                className={toggleStyles(effectiveResult === r)}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-faint">
+            Suggested: <span className="font-semibold text-fg">{suggested}</span>
+            {effectiveResult !== suggested && ' — you have overridden it.'}
+          </p>
         </div>
-        <p className="mt-2 text-xs text-faint">
-          Suggested: <span className="font-semibold text-fg">{suggested}</span>
-          {effectiveResult !== suggested && ' — you have overridden it.'}
-        </p>
       </Panel>
 
-      {/* 5. Notes */}
-      <Panel className="p-4">
-        <Label htmlFor="notes">Notes (optional)</Label>
-        <textarea
-          id="notes"
-          rows={3}
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
-          className={`${fieldStyles} min-h-24 py-2`}
-        />
-      </Panel>
-
-      {/* 6. Team stats, both sides */}
+      {/* 3. Team stats, both sides */}
       <Panel className="p-4">
         <div className="mb-1 flex items-baseline justify-between gap-2">
           <Label>Team stats</Label>
@@ -704,9 +719,11 @@ export function MatchForm({
                     <div key={key}>
                       <label
                         htmlFor={key}
-                        className="mb-1 block text-[11px] text-faint"
+                        className={`mb-1 block truncate text-[11px] font-semibold ${
+                          side === 'us' ? 'text-accent-text' : 'text-rival-text'
+                        }`}
                       >
-                        {side === 'us' ? 'Us' : 'Them'}
+                        {side === 'us' ? 'Dream Team' : opponentLabel}
                       </label>
                       <input
                         id={key}
@@ -738,8 +755,8 @@ export function MatchForm({
             {teamShotsOff.length === 2
               ? 'both sides'
               : teamShotsOff[0] === 'us'
-                ? 'us'
-                : 'them'}
+                ? 'Dream Team'
+                : opponentLabel}
             . This will still save.
           </p>
         )}
@@ -753,7 +770,7 @@ export function MatchForm({
         )}
       </Panel>
 
-      {/* 7. Player stats */}
+      {/* 4. Player stats */}
       <Panel className="p-4">
         <div className="mb-1 flex items-baseline justify-between">
           <Label>Player stats</Label>
@@ -763,8 +780,8 @@ export function MatchForm({
         </div>
         <p className="mb-3 text-[11px] text-faint">
           Everyone listed here counts as having played this match. Remove anyone
-          who did not feature. Leave a box empty for anything you did not
-          track — empty is not the same as zero.
+          who did not feature. Boxes default to 0 — clear one to mark it as not
+          tracked instead.
           {potgIds.length > 0 &&
             ` · ${potgIds.length} of ${MAX_POTG} player-of-the-match picks used.`}
         </p>
@@ -780,8 +797,8 @@ export function MatchForm({
                 optNum(line.stats[stat.key])
               )
             )
-            const hasBlanks = shown.some(
-              (stat) => (line.stats[stat.key] ?? '').trim() === ''
+            const hasZeros = shown.some(
+              (stat) => stat.optional && (line.stats[stat.key] ?? '').trim() === '0'
             )
             return (
               <div
@@ -844,11 +861,11 @@ export function MatchForm({
                       than the bordered toggle that records a stat. */}
                   <button
                     type="button"
-                    onClick={() => zeroBlanks(line.playerId)}
-                    disabled={!hasBlanks}
+                    onClick={() => setZerosBlank(line.playerId)}
+                    disabled={!hasZeros}
                     className="rounded-lg px-1.5 py-1 text-xs font-medium text-muted underline decoration-dotted underline-offset-2 hover:text-fg disabled:no-underline disabled:opacity-40"
                   >
-                    Set blanks to 0
+                    Set 0 to blank
                   </button>
                   <button
                     type="button"
@@ -919,6 +936,35 @@ export function MatchForm({
             {targetMismatches.length === 1 ? 'has' : 'have'} more shots on target
             than shots. This will still save.
           </p>
+        )}
+      </Panel>
+
+      {/* 5. Notes */}
+      <Panel className="p-4">
+        <button
+          type="button"
+          onClick={() => setNotesOpen((v) => !v)}
+          aria-expanded={notesOpen}
+          className="flex w-full items-center justify-between gap-2"
+        >
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-faint">
+            Notes (optional)
+          </span>
+          <span
+            aria-hidden
+            className={`text-faint transition-transform ${notesOpen ? 'rotate-180' : ''}`}
+          >
+            ⌄
+          </span>
+        </button>
+        {notesOpen && (
+          <textarea
+            id="notes"
+            rows={3}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className={`${fieldStyles} mt-3 min-h-24 py-2`}
+          />
         )}
       </Panel>
 
