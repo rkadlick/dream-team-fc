@@ -17,6 +17,7 @@ import { getViewer } from '@/lib/auth'
 import {
   getGameTypes,
   getMatch,
+  getMatchGoals,
   getMatchVideos,
   getPlayers,
   getSeasons,
@@ -41,13 +42,14 @@ export default async function MatchDetailPage(props: {
   const match = await getMatch(id)
   if (!match) notFound()
 
-  const [seasons, gameTypes, players, statRows, viewer, videos] = await Promise.all([
+  const [seasons, gameTypes, players, statRows, viewer, videos, goals] = await Promise.all([
     getSeasons(),
     getGameTypes(),
     getPlayers(),
     getStatRows([match.id]),
     getViewer(),
     getMatchVideos(match.id),
+    getMatchGoals(match.id),
   ])
 
   const season = seasons.find((s) => s.id === match.season_id)
@@ -239,6 +241,38 @@ export default async function MatchDetailPage(props: {
         </section>
 
         <div className="space-y-6 lg:col-span-5">
+          {goals.length > 0 && (
+            <section>
+              <SectionTitle>Goal log</SectionTitle>
+              <Panel className="divide-y divide-line">
+                {goals.map((g) => {
+                  const scorer = playerById.get(g.scorer_id)
+                  const assist = g.assist_id ? playerById.get(g.assist_id) : null
+                  return (
+                    <div key={g.id} className="flex items-center gap-3 px-4 py-2.5">
+                      <span className="w-9 shrink-0 text-right text-xs font-semibold tabular-nums text-faint">
+                        {g.minute !== null ? `${g.minute}'` : '—'}
+                      </span>
+                      <span aria-hidden className="text-accent-text">
+                        ⚽
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium">
+                          {scorer ? formatPlayerLabel(scorer) : 'Unknown player'}
+                        </div>
+                        {assist && (
+                          <div className="truncate text-xs text-faint">
+                            Assist: {formatPlayerLabel(assist)}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })}
+              </Panel>
+            </section>
+          )}
+
           {potg.length > 0 && (
             <section>
               <SectionTitle>

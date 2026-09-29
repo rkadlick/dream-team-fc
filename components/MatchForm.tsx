@@ -49,9 +49,56 @@ export type MatchFormInitial = {
     potg_rank: number | null
     [key: string]: string | number | null
   }[]
+  /** The real goal log, when one was recorded after this feature shipped. */
+  goals?: { scorer_id: string; assist_id: string | null; minute: number | null }[]
 }
 
 type Line = { playerId: string; stats: StatInputs }
+
+/** One goal slot in the form: a required scorer, an optional assist, an optional minute. */
+type GoalSlot = { scorerId: string; assistId: string; minute: string }
+
+function resizeGoalSlots(prev: GoalSlot[], target: number): GoalSlot[] {
+  if (prev.length === target) return prev
+  if (prev.length > target) return prev.slice(0, target)
+  return [
+    ...prev,
+    ...Array.from({ length: target - prev.length }, () => ({
+      scorerId: '',
+      assistId: '',
+      minute: '',
+    })),
+  ]
+}
+
+/**
+ * Best-effort reconstruction for a match saved before the goal log existed:
+ * the aggregate goals/assists counts on match_player_stats don't record which
+ * assist belongs to which goal, so this produces *a* plausible pairing, not
+ * necessarily the real one. Harmless, since only the tallies (not the
+ * pairing) are ever persisted.
+ */
+function reconstructGoalSlots(stats: MatchFormInitial['stats']): GoalSlot[] {
+  const slots: GoalSlot[] = []
+  for (const row of stats) {
+    const goals = Number(row.goals) || 0
+    for (let i = 0; i < goals; i++) {
+      slots.push({ scorerId: row.player_id, assistId: '', minute: '' })
+    }
+  }
+  for (const row of stats) {
+    let remaining = Number(row.assists) || 0
+    if (remaining <= 0) continue
+    for (const slot of slots) {
+      if (remaining <= 0) break
+      if (slot.assistId === '' && slot.scorerId !== row.player_id) {
+        slot.assistId = row.player_id
+        remaining -= 1
+      }
+    }
+  }
+  return slots
+}
 
 /** Suggested result from the scores, or the PK scores when they are filled in. */
 function suggestResult(
@@ -99,16 +146,40 @@ function toInputs(
 /**
  * A freshly added line starts fully zeroed rather than blank, since 0 is by
  * far the most common value and typing over a 0 beats typing into a dash.
- * GK-only stats (saves) stay blank so they keep defaulting to hidden for
- * outfielders — see `statApplies`.
+ * A GK-only stat (saves) defaults to 0 for an actual keeper and stays blank
+ * for anyone else, so it keeps defaulting to hidden for outfielders — see
+ * `statApplies`.
  */
-function blankInputs(): StatInputs {
+function blankInputs(position: string | null): StatInputs {
   return Object.fromEntries(
-    STATS.map((stat) => [stat.key, stat.gkOnly ? '' : '0'])
+    STATS.map((stat) => [stat.key, stat.gkOnly && position !== 'GK' ? '' : '0'])
   )
 }
 
 const DIVISIONS = [1, 2, 3, 4, 5]
+
+/** Stats entered as event logs (goals/cards) rather than typed per player. */
+const DERIVED_STAT_KEYS = ['goals', 'assists', 'yellow_cards', 'red_cards']
+
+/** One card in the form: who it was on, and which color. */
+type CardEntry = { playerId: string; type: 'yellow' | 'red' }
+
+/**
+ * Best-effort reconstruction for a match saved before the card log existed —
+ * same caveat as `reconstructGoalSlots`: order/identity of individual cards
+ * isn't stored, only the per-player totals, so this just produces that many
+ * rows per player.
+ */
+function reconstructCardEntries(stats: MatchFormInitial['stats']): CardEntry[] {
+  const entries: CardEntry[] = []
+  for (const row of stats) {
+    const yellow = Number(row.yellow_cards) || 0
+    for (let i = 0; i < yellow; i++) entries.push({ playerId: row.player_id, type: 'yellow' })
+    const red = Number(row.red_cards) || 0
+    for (let i = 0; i < red; i++) entries.push({ playerId: row.player_id, type: 'red' })
+  }
+  return entries
+}
 
 export function MatchForm({
   seasons,
@@ -174,7 +245,29 @@ export function MatchForm({
     // New match: every active player is pre-listed, human and AI alike. A stat
     // row is what makes a game count as played, so AI teammates need one too.
     // Anyone who did not feature gets removed with the ✕ on their line.
-    return players.map((p) => ({ playerId: p.id, stats: blankInputs() }))
+    return players.map((p) => ({ playerId: p.id, stats: blankInputs(p.position) }))
+  })
+
+  /** One row per card: who it was on, and which color. */
+  const [cardEntries, setCardEntries] = useState<CardEntry[]>(() =>
+    initial ? reconstructCardEntries(initial.stats) : []
+  )
+
+  /**
+   * One slot per Dream Team goal: a required scorer and an optional assist.
+   * The slot count is driven by the score inputs (see the score/own-goals
+   * handlers below), not stored independently.
+   */
+  const [goalSlots, setGoalSlots] = useState<GoalSlot[]>(() => {
+    if (initial?.goals && initial.goals.length > 0) {
+      return initial.goals.map((g) => ({
+        scorerId: g.scorer_id,
+        assistId: g.assist_id ?? '',
+        minute: g.minute !== null && g.minute !== undefined ? String(g.minute) : '',
+      }))
+    }
+    if (initial) return reconstructGoalSlots(initial.stats)
+    return []
   })
 
   /**
@@ -216,10 +309,40 @@ export function MatchForm({
   )
   const effectiveResult = resultTouched ? result : suggested
 
-  const attributedGoals = lines.reduce(
-    (sum, l) => sum + num(l.stats.goals ?? '0'),
-    0
-  )
+  const goalsByPlayer = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const slot of goalSlots) {
+      if (!slot.scorerId) continue
+      map.set(slot.scorerId, (map.get(slot.scorerId) ?? 0) + 1)
+    }
+    return map
+  }, [goalSlots])
+
+  const assistsByPlayer = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const slot of goalSlots) {
+      if (!slot.assistId) continue
+      map.set(slot.assistId, (map.get(slot.assistId) ?? 0) + 1)
+    }
+    return map
+  }, [goalSlots])
+
+  const cardsByPlayer = useMemo(() => {
+    const yellow = new Map<string, number>()
+    const red = new Map<string, number>()
+    for (const card of cardEntries) {
+      if (!card.playerId) continue
+      const map = card.type === 'yellow' ? yellow : red
+      map.set(card.playerId, (map.get(card.playerId) ?? 0) + 1)
+    }
+    return { yellow, red }
+  }, [cardEntries])
+  // Any card at all means cards are being tracked for this match: everyone
+  // else defaults to 0, not "not tracked". No cards means no opinion either
+  // way, same as an untouched number box always has.
+  const cardsTracked = cardEntries.length > 0
+
+  const attributedGoals = goalSlots.filter((slot) => slot.scorerId).length
   const goalTotal = attributedGoals + num(oppOwnGoals)
   const goalsMismatch = goalTotal !== num(scoreUs)
 
@@ -270,6 +393,8 @@ export function MatchForm({
     matchStats,
     potgIds,
     lines,
+    goalSlots,
+    cardEntries,
   })
   // Captured once, on first render, then compared on every later one.
   const [initialSnapshot] = useState(snapshot)
@@ -287,13 +412,61 @@ export function MatchForm({
 
   const addPlayer = (playerId: string) => {
     if (!playerId) return
-    setLines((prev) => [...prev, { playerId, stats: blankInputs() }])
+    setLines((prev) =>
+      prev.some((l) => l.playerId === playerId)
+        ? prev
+        : [
+            ...prev,
+            { playerId, stats: blankInputs(playerById.get(playerId)?.position ?? null) },
+          ]
+    )
   }
 
   const removePlayer = (playerId: string) => {
     setLines((prev) => prev.filter((l) => l.playerId !== playerId))
-    // A player who did not appear cannot be player of the match.
+    // A player who did not appear cannot be player of the match, nor credited
+    // with a goal, assist, or card.
     setPotgIds((prev) => prev.filter((id) => id !== playerId))
+    setGoalSlots((prev) =>
+      prev.map((slot) => ({
+        ...slot,
+        scorerId: slot.scorerId === playerId ? '' : slot.scorerId,
+        assistId: slot.assistId === playerId ? '' : slot.assistId,
+      }))
+    )
+    setCardEntries((prev) => prev.filter((card) => card.playerId !== playerId))
+  }
+
+  /** Picking a scorer/assist who isn't in the player stats list yet adds them. */
+  const setGoalSlot = (
+    index: number,
+    field: 'scorerId' | 'assistId' | 'minute',
+    value: string
+  ) => {
+    setGoalSlots((prev) =>
+      prev.map((slot, i) => (i === index ? { ...slot, [field]: value } : slot))
+    )
+    if ((field === 'scorerId' || field === 'assistId') && value) {
+      addPlayer(value)
+    }
+  }
+
+  const addCard = () => {
+    setCardEntries((prev) => [...prev, { playerId: '', type: 'yellow' }])
+  }
+
+  const setCardType = (index: number, type: 'yellow' | 'red') => {
+    setCardEntries((prev) => prev.map((c, i) => (i === index ? { ...c, type } : c)))
+  }
+
+  /** Picking a player who isn't in the player stats list yet adds them. */
+  const setCardPlayer = (index: number, playerId: string) => {
+    setCardEntries((prev) => prev.map((c, i) => (i === index ? { ...c, playerId } : c)))
+    if (playerId) addPlayer(playerId)
+  }
+
+  const removeCard = (index: number) => {
+    setCardEntries((prev) => prev.filter((_, i) => i !== index))
   }
 
   /**
@@ -307,7 +480,7 @@ export function MatchForm({
         if (l.playerId !== playerId) return l
         const stats = { ...l.stats }
         for (const stat of STATS) {
-          if (!stat.optional) continue
+          if (!stat.optional || DERIVED_STAT_KEYS.includes(stat.key)) continue
           if ((stats[stat.key] ?? '').trim() !== '0') continue
           stats[stat.key] = ''
         }
@@ -379,13 +552,36 @@ export function MatchForm({
           player_id: l.playerId,
           potg_rank: slot === -1 ? null : slot + 1,
           ...Object.fromEntries(
-            STATS.map((stat) => [
-              stat.key,
-              stat.optional ? optNum(l.stats[stat.key]) : num(l.stats[stat.key] ?? '0'),
-            ])
+            STATS.map((stat) => {
+              // Goals/assists/cards come from their own event logs, not manual entry.
+              if (stat.key === 'goals') return [stat.key, goalsByPlayer.get(l.playerId) ?? 0]
+              if (stat.key === 'assists') {
+                return [stat.key, assistsByPlayer.get(l.playerId) ?? 0]
+              }
+              if (stat.key === 'yellow_cards') {
+                return [
+                  stat.key,
+                  cardsTracked ? cardsByPlayer.yellow.get(l.playerId) ?? 0 : null,
+                ]
+              }
+              if (stat.key === 'red_cards') {
+                return [stat.key, cardsTracked ? cardsByPlayer.red.get(l.playerId) ?? 0 : null]
+              }
+              return [
+                stat.key,
+                stat.optional ? optNum(l.stats[stat.key]) : num(l.stats[stat.key] ?? '0'),
+              ]
+            })
           ),
         }
       }),
+      goals: goalSlots
+        .filter((slot) => slot.scorerId)
+        .map((slot) => ({
+          scorer_id: slot.scorerId,
+          assist_id: slot.assistId || null,
+          minute: optNum(slot.minute),
+        })),
       allowUnattributed,
     }
 
@@ -417,6 +613,15 @@ export function MatchForm({
       active
         ? 'border-accent bg-accent-soft text-accent-text'
         : 'border-line bg-surface-2 text-muted'
+    }`
+
+  const cardToggleStyles = (active: boolean, tone: 'yellow' | 'red') =>
+    `h-8 flex-1 rounded-lg border text-xs font-semibold transition-colors ${
+      active
+        ? tone === 'yellow'
+          ? 'border-warn-line bg-warn-soft text-warn'
+          : 'border-loss/40 bg-loss-soft text-loss'
+        : 'border-line bg-surface text-faint'
     }`
 
   const opponentLabel = opponent.trim() || 'Them'
@@ -574,7 +779,13 @@ export function MatchForm({
               inputMode="numeric"
               min={0}
               value={scoreUs}
-              onChange={(e) => setScoreUs(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value
+                setScoreUs(value)
+                setGoalSlots((prev) =>
+                  resizeGoalSlots(prev, Math.max(0, num(value) - num(oppOwnGoals)))
+                )
+              }}
               className={`${fieldStyles} h-11 text-center text-lg font-bold`}
             />
           </div>
@@ -611,7 +822,13 @@ export function MatchForm({
             inputMode="numeric"
             min={0}
             value={oppOwnGoals}
-            onChange={(e) => setOppOwnGoals(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value
+              setOppOwnGoals(value)
+              setGoalSlots((prev) =>
+                resizeGoalSlots(prev, Math.max(0, num(scoreUs) - num(value)))
+              )
+            }}
             className={`${fieldBase} h-9 w-16 shrink-0 text-center`}
           />
         </div>
@@ -786,16 +1003,149 @@ export function MatchForm({
             ` · ${potgIds.length} of ${MAX_POTG} player-of-the-match picks used.`}
         </p>
 
-        <div className="space-y-2">
+        {goalSlots.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1.5">
+              <span aria-hidden>⚽</span>
+              <Label>Goals</Label>
+            </div>
+            {goalSlots.map((slot, index) => (
+              <div
+                key={index}
+                className="rounded-xl border border-line bg-surface-2 p-2.5"
+              >
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold text-faint">
+                    Goal {index + 1}
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={130}
+                    placeholder="Min"
+                    aria-label={`Goal ${index + 1} minute`}
+                    value={slot.minute}
+                    onChange={(e) => setGoalSlot(index, 'minute', e.target.value)}
+                    className={`${fieldBase} h-8 w-16 shrink-0 text-center text-xs`}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="mb-1 block text-[10px] uppercase tracking-wider text-faint">
+                      Scorer
+                    </label>
+                    <select
+                      value={slot.scorerId}
+                      onChange={(e) => setGoalSlot(index, 'scorerId', e.target.value)}
+                      className={`${fieldStyles} h-10 text-sm`}
+                    >
+                      <option value="">Select…</option>
+                      {players.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {formatPlayerLabel(p)}
+                          {p.is_human ? '' : ' — AI'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] uppercase tracking-wider text-faint">
+                      Assist (optional)
+                    </label>
+                    <select
+                      value={slot.assistId}
+                      onChange={(e) => setGoalSlot(index, 'assistId', e.target.value)}
+                      className={`${fieldStyles} h-10 text-sm`}
+                    >
+                      <option value="">No assist</option>
+                      {players
+                        .filter((p) => p.id !== slot.scorerId)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {formatPlayerLabel(p)}
+                            {p.is_human ? '' : ' — AI'}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div
+          className={`space-y-2 ${goalSlots.length > 0 ? 'mt-5 border-t border-line pt-5' : ''}`}
+        >
+          <div className="flex items-center gap-1.5">
+            <span aria-hidden>🟨</span>
+            <Label>Cards</Label>
+          </div>
+          {cardEntries.map((card, index) => (
+            <div
+              key={index}
+              className="rounded-xl border border-line bg-surface-2 p-2.5"
+            >
+              <div className="mb-2 flex items-center gap-2">
+                <div className="flex flex-1 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCardType(index, 'yellow')}
+                    className={cardToggleStyles(card.type === 'yellow', 'yellow')}
+                  >
+                    Yellow
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCardType(index, 'red')}
+                    className={cardToggleStyles(card.type === 'red', 'red')}
+                  >
+                    Red
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => removeCard(index)}
+                  aria-label="Remove card"
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 hover:text-fg"
+                >
+                  ✕
+                </button>
+              </div>
+              <select
+                value={card.playerId}
+                onChange={(e) => setCardPlayer(index, e.target.value)}
+                className={`${fieldStyles} h-10 text-sm`}
+              >
+                <option value="">Select player…</option>
+                {players.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {formatPlayerLabel(p)}
+                    {p.is_human ? '' : ' — AI'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addCard}
+            className="text-sm font-medium text-accent-text"
+          >
+            + Add card
+          </button>
+        </div>
+
+        <div className="mt-5 space-y-2 border-t border-line pt-5">
+          <Label>Other stats</Label>
           {lines.map((line) => {
             const player = playerById.get(line.playerId)
             const isPotg = potgIds.includes(line.playerId)
-            const shown = STATS.filter((stat) =>
-              statApplies(
-                stat,
-                player?.position ?? null,
-                optNum(line.stats[stat.key])
-              )
+            const shown = STATS.filter(
+              (stat) =>
+                !DERIVED_STAT_KEYS.includes(stat.key) &&
+                statApplies(stat, player?.position ?? null, optNum(line.stats[stat.key]))
             )
             const hasZeros = shown.some(
               (stat) => stat.optional && (line.stats[stat.key] ?? '').trim() === '0'

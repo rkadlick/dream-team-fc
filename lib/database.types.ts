@@ -272,6 +272,52 @@ export type Database = {
           },
         ]
       }
+      match_goals: {
+        Row: {
+          id: string
+          match_id: string
+          scorer_id: string
+          assist_id: string | null
+          minute: number | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          match_id: string
+          scorer_id: string
+          assist_id?: string | null
+          minute?: number | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          match_id?: string
+          scorer_id?: string
+          assist_id?: string | null
+          minute?: number | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: 'match_goals_match_id_fkey'
+            columns: ['match_id']
+            referencedRelation: 'matches'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'match_goals_scorer_id_fkey'
+            columns: ['scorer_id']
+            referencedRelation: 'players'
+            referencedColumns: ['id']
+          },
+          {
+            foreignKeyName: 'match_goals_assist_id_fkey'
+            columns: ['assist_id']
+            referencedRelation: 'players'
+            referencedColumns: ['id']
+          },
+        ]
+      }
       admins: {
         Row: { user_id: string }
         Insert: { user_id: string }
@@ -344,7 +390,7 @@ export type Database = {
         Returns: boolean
       }
       save_match: {
-        Args: { p_match: Json; p_stats: Json }
+        Args: { p_match: Json; p_stats: Json; p_goals: Json }
         Returns: string
       }
     }

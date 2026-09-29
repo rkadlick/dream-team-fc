@@ -5,6 +5,7 @@ import { STATS, pickMatchStats } from '@/lib/stats-config'
 import {
   getGameTypes,
   getMatch,
+  getMatchGoals,
   getOpponents,
   getPlayers,
   getSeasons,
@@ -20,12 +21,13 @@ export default async function EditMatchPage(props: {
   const match = await getMatch(id)
   if (!match) notFound()
 
-  const [seasons, gameTypes, players, opponents, statRows] = await Promise.all([
+  const [seasons, gameTypes, players, opponents, statRows, goals] = await Promise.all([
     getSeasons(),
     getGameTypes(),
     getPlayers(),
     getOpponents(),
     getStatRows([id]),
+    getMatchGoals(id),
   ])
 
   // Inactive players and inactive game types already on the match stay
@@ -62,6 +64,11 @@ export default async function EditMatchPage(props: {
                 return [s.key, Number(raw)]
               })
             ),
+          })),
+          goals: goals.map((g) => ({
+            scorer_id: g.scorer_id,
+            assist_id: g.assist_id,
+            minute: g.minute,
           })),
         }}
       />

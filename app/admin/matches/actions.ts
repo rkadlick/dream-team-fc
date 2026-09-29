@@ -17,6 +17,12 @@ export type StatLine = {
   potg_rank?: number | null
 } & Record<string, number | string | null | undefined>
 
+export type GoalLine = {
+  scorer_id: string
+  assist_id: string | null
+  minute: number | null
+}
+
 export type SaveMatchPayload = {
   id?: string
   season_id: string
@@ -37,6 +43,8 @@ export type SaveMatchPayload = {
   /** Team stats for both sides. null means "not tracked". */
   matchStats: Record<string, number | null>
   stats: StatLine[]
+  /** The goal log: who scored, who (if anyone) assisted, and when. */
+  goals: GoalLine[]
   /** Ticked to save with goals that do not add up (backfilling old games). */
   allowUnattributed: boolean
 }
@@ -111,6 +119,16 @@ export async function saveMatchAction(
     }
   }
 
+  for (const goal of payload.goals) {
+    if (!goal.scorer_id) return { error: 'A goal is missing a scorer.' }
+    if (goal.assist_id !== null && goal.assist_id === goal.scorer_id) {
+      return { error: 'A player cannot assist their own goal.' }
+    }
+    if (goal.minute !== null && (goal.minute < 0 || goal.minute > 130)) {
+      return { error: 'A goal minute must be between 0 and 130.' }
+    }
+  }
+
   for (const stat of MATCH_STATS) {
     for (const side of ['us', 'them'] as const) {
       const value = toOptionalInt(payload.matchStats[`${stat.key}_${side}`])
@@ -165,6 +183,11 @@ export async function saveMatchAction(
       }
       return row
     }) as Json,
+    p_goals: payload.goals.map((goal) => ({
+      scorer_id: goal.scorer_id,
+      assist_id: goal.assist_id,
+      minute: goal.minute,
+    })) as Json,
   })
 
   if (error) return { error: error.message }

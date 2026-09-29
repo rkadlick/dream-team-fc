@@ -165,6 +165,22 @@ export async function getRecentVideos(limit: number): Promise<RecentVideo[]> {
     .filter((v): v is RecentVideo => v !== null)
 }
 
+export type MatchGoal = Tables<'match_goals'>
+
+const GOAL_COLUMNS = 'id, match_id, scorer_id, assist_id, minute, created_at'
+
+/** A match's goal log, in the order they were scored (nulls-last by minute). */
+export async function getMatchGoals(matchId: string): Promise<MatchGoal[]> {
+  const supabase = await createClient()
+  const result = await supabase
+    .from('match_goals')
+    .select(GOAL_COLUMNS)
+    .eq('match_id', matchId)
+    .order('minute', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
+  return unwrap(result, 'the goal log') ?? []
+}
+
 /** Admin-uploaded banner photos, oldest upload first. */
 export async function getTeamPhotoUploads(): Promise<TeamPhoto[]> {
   const supabase = await createClient()
