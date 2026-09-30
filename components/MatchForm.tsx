@@ -181,6 +181,87 @@ function reconstructCardEntries(stats: MatchFormInitial['stats']): CardEntry[] {
   return entries
 }
 
+const stepperButtonBase =
+  'flex shrink-0 items-center justify-center rounded-full border font-bold leading-none transition-colors disabled:opacity-30'
+
+const stepperTones = {
+  accent:
+    'border-accent-line bg-accent-soft text-accent-text hover:border-accent active:bg-accent active:text-accent-fg',
+  rival: 'border-rival-line bg-rival-soft text-rival-text hover:border-rival-text',
+}
+
+/** null renders as "—" (not tracked); + from there goes to 1. */
+function Stepper({
+  value,
+  onStep,
+  label,
+  compact = false,
+  tone = 'accent',
+}: {
+  value: number | null
+  onStep: (delta: 1 | -1) => void
+  label: string
+  compact?: boolean
+  tone?: keyof typeof stepperTones
+}) {
+  const button = `${stepperButtonBase} ${stepperTones[tone]} ${
+    compact ? 'h-7 w-7 text-base' : 'h-9 w-9 text-lg'
+  }`
+  return (
+    <div
+      className={`flex items-center justify-between ${compact ? 'h-10 gap-1' : 'h-11 gap-2'}`}
+    >
+      <button
+        type="button"
+        onClick={() => onStep(-1)}
+        disabled={!value}
+        aria-label={`Decrease ${label}`}
+        className={button}
+      >
+        −
+      </button>
+      <span
+        aria-live="polite"
+        className={`font-bold tabular-nums ${compact ? 'text-base' : 'text-2xl'} ${
+          value === null ? 'text-faint' : ''
+        }`}
+      >
+        {value ?? '—'}
+      </span>
+      <button
+        type="button"
+        onClick={() => onStep(1)}
+        aria-label={`Increase ${label}`}
+        className={button}
+      >
+        +
+      </button>
+    </div>
+  )
+}
+
+function SubsectionHeading({
+  icon,
+  title,
+  meta,
+  className,
+}: {
+  icon: string
+  title: string
+  meta?: string
+  className: string
+}) {
+  return (
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <h3 className={`flex items-center gap-1.5 text-sm font-bold ${className}`}>
+        <span aria-hidden>{icon}</span>
+        {title}
+      </h3>
+      {meta && <span className="text-xs font-medium text-faint">{meta}</span>}
+    </div>
+  )
+}
+
 export function MatchForm({
   seasons,
   gameTypes: initialGameTypes,
@@ -247,6 +328,25 @@ export function MatchForm({
     // Anyone who did not feature gets removed with the ✕ on their line.
     return players.map((p) => ({ playerId: p.id, stats: blankInputs(p.position) }))
   })
+
+  /**
+   * Keepers show only saves; their outfield stats sit behind a toggle. A
+   * keeper who already has a non-zero outfield stat starts expanded so
+   * recorded data is never hidden on load.
+   */
+  const [expandedKeepers, setExpandedKeepers] = useState<string[]>(() =>
+    lines
+      .filter((l) => {
+        if (players.find((p) => p.id === l.playerId)?.position !== 'GK') return false
+        return STATS.some(
+          (s) =>
+            !s.gkOnly &&
+            !DERIVED_STAT_KEYS.includes(s.key) &&
+            (optNum(l.stats[s.key]) ?? 0) > 0
+        )
+      })
+      .map((l) => l.playerId)
+  )
 
   /** One row per card: who it was on, and which color. */
   const [cardEntries, setCardEntries] = useState<CardEntry[]>(() =>
@@ -400,13 +500,14 @@ export function MatchForm({
   const [initialSnapshot] = useState(snapshot)
   const dirty = snapshot !== initialSnapshot
 
-  const setStat = (playerId: string, key: string, value: string) => {
+  /** A blank ("not tracked") stat steps from 0, so + makes it 1. */
+  const stepStat = (playerId: string, key: string, delta: 1 | -1) => {
     setLines((prev) =>
-      prev.map((l) =>
-        l.playerId === playerId
-          ? { ...l, stats: { ...l.stats, [key]: value } }
-          : l
-      )
+      prev.map((l) => {
+        if (l.playerId !== playerId) return l
+        const next = Math.max(0, (optNum(l.stats[key]) ?? 0) + delta)
+        return { ...l, stats: { ...l.stats, [key]: String(next) } }
+      })
     )
   }
 
@@ -435,6 +536,14 @@ export function MatchForm({
       }))
     )
     setCardEntries((prev) => prev.filter((card) => card.playerId !== playerId))
+  }
+
+  // One goal at a time, so the slot list only ever gains or loses its last
+  // entry — typed input could pass through a blank value and wipe every slot.
+  const stepScoreUs = (delta: 1 | -1) => {
+    const next = Math.max(0, num(scoreUs) + delta)
+    setScoreUs(String(next))
+    setGoalSlots((prev) => resizeGoalSlots(prev, Math.max(0, next - num(oppOwnGoals))))
   }
 
   /** Picking a scorer/assist who isn't in the player stats list yet adds them. */
@@ -486,6 +595,12 @@ export function MatchForm({
         }
         return { ...l, stats }
       })
+    )
+  }
+
+  const toggleKeeperStats = (playerId: string) => {
+    setExpandedKeepers((prev) =>
+      prev.includes(playerId) ? prev.filter((id) => id !== playerId) : [...prev, playerId]
     )
   }
 
@@ -767,44 +882,23 @@ export function MatchForm({
 
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <label
-              htmlFor="score_us"
-              className="mb-1 block truncate text-[11px] font-semibold uppercase tracking-wider text-accent-text"
-            >
+            <span className="mb-1 block truncate text-[11px] font-semibold uppercase tracking-wider text-accent-text">
               Dream Team
-            </label>
-            <input
-              id="score_us"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={scoreUs}
-              onChange={(e) => {
-                const value = e.target.value
-                setScoreUs(value)
-                setGoalSlots((prev) =>
-                  resizeGoalSlots(prev, Math.max(0, num(value) - num(oppOwnGoals)))
-                )
-              }}
-              className={`${fieldStyles} h-11 text-center text-lg font-bold`}
-            />
+            </span>
+            <Stepper value={num(scoreUs)} onStep={stepScoreUs} label="Dream Team score" />
           </div>
           <div>
-            <label
-              htmlFor="score_them"
+            <span
               className="mb-1 block truncate text-[11px] font-semibold uppercase tracking-wider text-rival-text"
               title={opponentLabel}
             >
               {opponentLabel}
-            </label>
-            <input
-              id="score_them"
-              type="number"
-              inputMode="numeric"
-              min={0}
-              value={scoreThem}
-              onChange={(e) => setScoreThem(e.target.value)}
-              className={`${fieldStyles} h-11 text-center text-lg font-bold`}
+            </span>
+            <Stepper
+              value={num(scoreThem)}
+              onStep={(delta) => setScoreThem(String(Math.max(0, num(scoreThem) + delta)))}
+              label={`${opponentLabel} score`}
+              tone="rival"
             />
           </div>
         </div>
@@ -997,148 +1091,161 @@ export function MatchForm({
         </div>
         <p className="mb-3 text-[11px] text-faint">
           Everyone listed here counts as having played this match. Remove anyone
-          who did not feature. Boxes default to 0 — clear one to mark it as not
-          tracked instead.
+          who did not feature. Stats start at 0 — use “Set 0 to blank” to mark
+          them as not tracked instead.
           {potgIds.length > 0 &&
             ` · ${potgIds.length} of ${MAX_POTG} player-of-the-match picks used.`}
         </p>
 
         {goalSlots.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-1.5">
-              <span aria-hidden>⚽</span>
-              <Label>Goals</Label>
-            </div>
-            {goalSlots.map((slot, index) => (
-              <div
-                key={index}
-                className="rounded-xl border border-line bg-surface-2 p-2.5"
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <span className="text-xs font-semibold text-faint">
-                    Goal {index + 1}
-                  </span>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={130}
-                    placeholder="Min"
-                    aria-label={`Goal ${index + 1} minute`}
-                    value={slot.minute}
-                    onChange={(e) => setGoalSlot(index, 'minute', e.target.value)}
-                    className={`${fieldBase} h-8 w-16 shrink-0 text-center text-xs`}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="mb-1 block text-[10px] uppercase tracking-wider text-faint">
-                      Scorer
-                    </label>
-                    <select
-                      value={slot.scorerId}
-                      onChange={(e) => setGoalSlot(index, 'scorerId', e.target.value)}
-                      className={`${fieldStyles} h-10 text-sm`}
-                    >
-                      <option value="">Select…</option>
-                      {players.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {formatPlayerLabel(p)}
-                          {p.is_human ? '' : ' — AI'}
-                        </option>
-                      ))}
-                    </select>
+          <div>
+            <SubsectionHeading
+              icon="⚽"
+              title="Goals"
+              meta={`${attributedGoals} of ${goalSlots.length} assigned`}
+              className="text-accent-text"
+            />
+            <div className="divide-y divide-accent-line overflow-hidden rounded-xl border border-accent-line bg-accent-soft">
+              {goalSlots.map((slot, index) => (
+                <div key={index} className="p-2.5">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-accent-text">
+                      Goal {index + 1}
+                    </span>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      max={130}
+                      placeholder="Min"
+                      aria-label={`Goal ${index + 1} minute`}
+                      value={slot.minute}
+                      onChange={(e) => setGoalSlot(index, 'minute', e.target.value)}
+                      className={`${fieldBase} h-8 w-16 shrink-0 text-center text-xs`}
+                    />
                   </div>
-                  <div>
-                    <label className="mb-1 block text-[10px] uppercase tracking-wider text-faint">
-                      Assist (optional)
-                    </label>
-                    <select
-                      value={slot.assistId}
-                      onChange={(e) => setGoalSlot(index, 'assistId', e.target.value)}
-                      className={`${fieldStyles} h-10 text-sm`}
-                    >
-                      <option value="">No assist</option>
-                      {players
-                        .filter((p) => p.id !== slot.scorerId)
-                        .map((p) => (
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-accent-text">
+                        Scorer
+                      </label>
+                      <select
+                        value={slot.scorerId}
+                        onChange={(e) => setGoalSlot(index, 'scorerId', e.target.value)}
+                        className={`${fieldStyles} h-10 text-sm`}
+                      >
+                        <option value="">Select…</option>
+                        {players.map((p) => (
                           <option key={p.id} value={p.id}>
                             {formatPlayerLabel(p)}
                             {p.is_human ? '' : ' — AI'}
                           </option>
                         ))}
-                    </select>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-accent-text">
+                        Assist (optional)
+                      </label>
+                      <select
+                        value={slot.assistId}
+                        onChange={(e) => setGoalSlot(index, 'assistId', e.target.value)}
+                        className={`${fieldStyles} h-10 text-sm`}
+                      >
+                        <option value="">No assist</option>
+                        {players
+                          .filter((p) => p.id !== slot.scorerId)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {formatPlayerLabel(p)}
+                              {p.is_human ? '' : ' — AI'}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         )}
 
-        <div
-          className={`space-y-2 ${goalSlots.length > 0 ? 'mt-5 border-t border-line pt-5' : ''}`}
-        >
-          <div className="flex items-center gap-1.5">
-            <span aria-hidden>🟨</span>
-            <Label>Cards</Label>
-          </div>
-          {cardEntries.map((card, index) => (
-            <div
-              key={index}
-              className="rounded-xl border border-line bg-surface-2 p-2.5"
-            >
-              <div className="mb-2 flex items-center gap-2">
-                <div className="flex flex-1 gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setCardType(index, 'yellow')}
-                    className={cardToggleStyles(card.type === 'yellow', 'yellow')}
+        <div className={goalSlots.length > 0 ? 'mt-5 border-t border-line pt-5' : ''}>
+          <SubsectionHeading
+            icon="🟨"
+            title="Cards"
+            meta={
+              cardEntries.length > 0
+                ? `${cardEntries.filter((c) => c.type === 'yellow').length} yellow · ${
+                    cardEntries.filter((c) => c.type === 'red').length
+                  } red`
+                : undefined
+            }
+            className="text-warn"
+          />
+          {cardEntries.length > 0 && (
+            <div className="mb-2 divide-y divide-warn-line overflow-hidden rounded-xl border border-warn-line bg-warn-soft">
+              {cardEntries.map((card, index) => (
+                <div key={index} className="p-2.5">
+                  <div className="mb-2 flex items-center gap-2">
+                    <div className="flex flex-1 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setCardType(index, 'yellow')}
+                        className={cardToggleStyles(card.type === 'yellow', 'yellow')}
+                      >
+                        Yellow
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCardType(index, 'red')}
+                        className={cardToggleStyles(card.type === 'red', 'red')}
+                      >
+                        Red
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeCard(index)}
+                      aria-label="Remove card"
+                      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-warn hover:bg-surface hover:text-fg"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <select
+                    value={card.playerId}
+                    onChange={(e) => setCardPlayer(index, e.target.value)}
+                    className={`${fieldStyles} h-10 text-sm`}
                   >
-                    Yellow
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setCardType(index, 'red')}
-                    className={cardToggleStyles(card.type === 'red', 'red')}
-                  >
-                    Red
-                  </button>
+                    <option value="">Select player…</option>
+                    {players.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {formatPlayerLabel(p)}
+                        {p.is_human ? '' : ' — AI'}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => removeCard(index)}
-                  aria-label="Remove card"
-                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-faint hover:bg-surface-3 hover:text-fg"
-                >
-                  ✕
-                </button>
-              </div>
-              <select
-                value={card.playerId}
-                onChange={(e) => setCardPlayer(index, e.target.value)}
-                className={`${fieldStyles} h-10 text-sm`}
-              >
-                <option value="">Select player…</option>
-                {players.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {formatPlayerLabel(p)}
-                    {p.is_human ? '' : ' — AI'}
-                  </option>
-                ))}
-              </select>
+              ))}
             </div>
-          ))}
+          )}
           <button
             type="button"
             onClick={addCard}
-            className="text-sm font-medium text-accent-text"
+            className="text-sm font-semibold text-warn"
           >
             + Add card
           </button>
         </div>
 
         <div className="mt-5 space-y-2 border-t border-line pt-5">
-          <Label>Other stats</Label>
+          <SubsectionHeading
+            icon="📊"
+            title="Other stats"
+            meta={`${lines.length} ${lines.length === 1 ? 'player' : 'players'}`}
+            className="text-fg"
+          />
           {lines.map((line) => {
             const player = playerById.get(line.playerId)
             const isPotg = potgIds.includes(line.playerId)
@@ -1147,9 +1254,17 @@ export function MatchForm({
                 !DERIVED_STAT_KEYS.includes(stat.key) &&
                 statApplies(stat, player?.position ?? null, optNum(line.stats[stat.key]))
             )
+            // Counts hidden stats too, so "Set 0 to blank" still clears them
+            // while a keeper's card is collapsed.
             const hasZeros = shown.some(
               (stat) => stat.optional && (line.stats[stat.key] ?? '').trim() === '0'
             )
+            const isKeeper = player?.position === 'GK'
+            const keeperExtras = isKeeper ? shown.filter((stat) => !stat.gkOnly) : []
+            const expanded = expandedKeepers.includes(line.playerId)
+            const visible = isKeeper
+              ? [...shown.filter((stat) => stat.gkOnly), ...(expanded ? keeperExtras : [])]
+              : shown
             return (
               <div
                 key={line.playerId}
@@ -1179,32 +1294,44 @@ export function MatchForm({
                     ✕
                   </button>
                 </div>
-                <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-8">
-                  {shown.map((stat) => (
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  {visible.map((stat) => (
                     <div key={stat.key} className="min-w-0">
-                      <label
-                        htmlFor={`${line.playerId}-${stat.key}`}
+                      <span
                         title={stat.label}
                         className="mb-0.5 block truncate text-center text-[10px] font-semibold uppercase tracking-wider text-faint"
                       >
                         {stat.shortLabel}
-                      </label>
-                      <input
-                        id={`${line.playerId}-${stat.key}`}
-                        type="number"
-                        inputMode="numeric"
-                        min={0}
-                        placeholder="—"
-                        aria-label={stat.label}
-                        value={line.stats[stat.key] ?? ''}
-                        onChange={(e) =>
-                          setStat(line.playerId, stat.key, e.target.value)
-                        }
-                        className={`${fieldStyles} h-10 px-1 text-center text-base font-semibold`}
+                      </span>
+                      <Stepper
+                        compact
+                        value={optNum(line.stats[stat.key])}
+                        onStep={(delta) => stepStat(line.playerId, stat.key, delta)}
+                        label={`${player?.name ?? 'player'} ${stat.label.toLowerCase()}`}
                       />
                     </div>
                   ))}
                 </div>
+
+                {keeperExtras.length > 0 && (
+                  // A full-width disclosure row: unlike the dotted-underline
+                  // helper and the bordered POTG pill, it only changes what
+                  // is shown, never the data.
+                  <button
+                    type="button"
+                    onClick={() => toggleKeeperStats(line.playerId)}
+                    aria-expanded={expanded}
+                    className="mt-2 flex w-full items-center justify-center gap-1 border-t border-dashed border-line pt-1.5 text-xs font-medium text-accent-text transition-colors hover:text-accent-hover"
+                  >
+                    {expanded ? 'Hide' : 'Show'} {keeperExtras.length} more stats
+                    <span
+                      aria-hidden
+                      className={`transition-transform ${expanded ? 'rotate-180' : ''}`}
+                    >
+                      ⌄
+                    </span>
+                  </button>
+                )}
 
                 <div className="mt-2 flex items-center justify-between gap-2">
                   {/* A form helper, so it reads as a quiet text action rather
